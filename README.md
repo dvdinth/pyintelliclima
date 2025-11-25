@@ -1,10 +1,21 @@
 # pyintelliclima
 
-👉\[\[\[**This is the initial readme for your
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv) template.** Fill it in and
-delete this message!
-Below are general setup instructions that you may remove or keep and adapt for your
-project.\]\]\]
+<div align="center">
+
+[![Python versions](https://img.shields.io/pypi/pyversions/pyintelliclima)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/pyintelliclima.svg)](https://pypi.org/project/pyintelliclima/)
+[![Status](https://img.shields.io/pypi/status/pyintelliclima.svg)](https://pypi.org/project/pyintelliclima/)
+[![License](https://img.shields.io/pypi/l/pyintelliclima)](https://github.com/dvdinth/pyintelliclima/blob/main/LICENSE)
+
+</div>
+
+* * *
+
+This is a python module for communicating with the IntelliClima ECOCOMFORT 2.0 devices. 
+Its main use is for my corresponding WIP HomeAssistant integration which I hope to release soon.
+
+It can be extended to include other devices from IntelliClima in the future, but I only own the 
+ECOCOMFORT, so I cannot add any others. Feel free to submit a PR for additional devices.
 
 * * *
 
@@ -13,8 +24,6 @@ project.\]\]\]
 For how to install uv and Python, see [installation.md](installation.md).
 
 For development workflows, see [development.md](development.md).
-
-For instructions on publishing to PyPI, see [publishing.md](publishing.md).
 
 * * *
 

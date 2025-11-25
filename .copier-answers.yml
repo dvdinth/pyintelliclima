@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier. Do not edit manually.
+_commit: v0.2.19
+_src_path: gh:jlevy/simple-modern-uv
+package_author_email: dorus_van_dinther@hotmail.com
+package_author_name: dvdinth
+package_description: Python module for a HTTP API to communicate with the IntelliClima
+    device server.
+package_github_org: dvdinth
+package_module: pyintelliclima
+package_name: pyintelliclima

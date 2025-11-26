@@ -17,6 +17,12 @@ Its main use is for my corresponding WIP HomeAssistant integration which I hope 
 It can be extended to include other devices from IntelliClima in the future, but I only own the 
 ECOCOMFORT, so I cannot add any others. Feel free to submit a PR for additional devices.
 
+## Credits
+
+This was highly inspired by: https://github.com/ruizmarc/homebridge-intelliclima
+
+Partial credit for the reverse engineering of the API goes to them.
+
 * * *
 
 ## Project Docs

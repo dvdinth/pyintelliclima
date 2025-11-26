@@ -113,7 +113,10 @@ class IntelliClimaEcocomfortAPI:
         """Set the mode and speed of an ecocomfort device."""
         command = create_mode_speed_command(device_sn, mode, speed)
         payload = {"trama": command}
-
+        LOGGER.debug(
+            "Sending command: %s",
+            command,
+        )
         response = await post_to_session(
             self._session,
             "eco/send/",
@@ -251,7 +254,7 @@ class IntelliClimaAPI:
             eco_device = from_dict(data_class=IntelliClimaECO, data=device_data)
             eco_devices[eco_device.id] = eco_device
 
-        return IntelliClimaDevices(ecocomfort2=eco_devices, c800={})
+        return IntelliClimaDevices(ecocomfort2_devices=eco_devices, c800_devices={})
 
     async def set_house_and_device_ids(self) -> None:
         """Finds the user's house ID and corresponding devices."""

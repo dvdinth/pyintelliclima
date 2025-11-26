@@ -91,8 +91,8 @@ async def test_get_all_device_status_basic(mock_post):
 
     assert isinstance(devices, IntelliClimaDevices)
     assert devices.num_devices == 1
-    assert "10" in devices.ecocomfort2
-    eco = devices.ecocomfort2["10"]
+    assert "10" in devices.ecocomfort2_devices
+    eco = devices.ecocomfort2_devices["10"]
     assert eco.id == "10"
     assert eco.model.modello == "ECO"
     assert eco.model.tipo == "ECOCOMFORT"

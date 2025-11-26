@@ -365,15 +365,18 @@ class IntelliClimaC800:
 class IntelliClimaDevices:
     """Dataclass for storing intelliclima devices."""
 
-    ecocomfort2: dict[str, IntelliClimaECO]
-    c800: dict[str, IntelliClimaC800]
+    ecocomfort2_devices: dict[str, IntelliClimaECO]
+    c800_devices: dict[str, IntelliClimaC800]
 
     @property
     def num_devices(self):
         """List the total number of devices."""
-        return len(self.ecocomfort2) + len(self.c800)
+        return len(self.ecocomfort2_devices) + len(self.c800_devices)
 
     @classmethod
     def empty(cls):
         """Initialize an empty instance of this class with no devices."""
         return cls({}, {})
+
+
+AllIntelliClimaDevices = IntelliClimaECO | IntelliClimaC800

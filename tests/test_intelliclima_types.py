@@ -26,7 +26,7 @@ def test_custom_program_roundtrip():
 
 
 def test_intelliclima_devices_helpers():
-    devices = IntelliClimaDevices(ecocomfort2={}, c800={})
+    devices = IntelliClimaDevices(ecocomfort2_devices={}, c800_devices={})
     assert devices.num_devices == 0
     empty = IntelliClimaDevices.empty()
     assert isinstance(empty, IntelliClimaDevices)

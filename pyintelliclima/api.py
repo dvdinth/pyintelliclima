@@ -174,6 +174,37 @@ def create_advanced_settings_command(
     return bytes_to_hex(base_data).upper()
 
 
+def create_season_free_cooling_command(
+    device_sn: str,
+    *,
+    season: Season | None = None,
+    free_cooling: FreeCoolingLevel | None = None,
+) -> str:
+    """Create an ECOCOMFORT 3 command for the shared season/free-cooling byte.
+
+    The two values occupy one nibble each. A value left as ``None`` is encoded
+    with the vendor app's preserve marker for that nibble.
+    """
+    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
+    season_nibble = "7" if season is None else f"{int(season):X}"
+    free_cooling_nibble = "F" if free_cooling is None else f"{int(free_cooling):X}"
+    partial_command = (
+        "0A"
+        + padded_sn
+        + "00182F00200000"
+        + "7F7F7F7F"
+        + season_nibble
+        + free_cooling_nibble
+        + "7F000000000000"
+    )
+    base_data = bytearray(hex_to_bytes(partial_command))
+    base_data.append(0x00)
+    base_data.append(0x0D)
+
+    base_data[-2] = checksum_crc8_nrsc5(base_data[1:-2])
+    return bytes_to_hex(base_data).upper()
+
+
 class IntelliClimaAPIError(Exception):
     """Exception for API errors."""
 
@@ -221,6 +252,36 @@ class _IntelliClimaVMCAPI:
         """Set the auto preset mode and speed."""
         return await self.set_mode_speed(device_sn, mode=FanMode.sensor, speed=FanSpeed.auto_set)
 
+    async def set_temperature_and_humidity_offsets(
+        self, device_sn: str, temperature_offset: float, humidity_offset: int
+    ) -> bool:
+        """Set temperature and humidity calibration offsets."""
+        command = create_offsets_command(device_sn, temperature_offset, humidity_offset)
+        return await self._send_command(command)
+
+    async def _set_advanced_settings(
+        self,
+        device_sn: str,
+        *,
+        humidity_threshold: ThresholdLevel | None = None,
+        humidity_threshold_advanced: bool = False,
+        voc_threshold: ThresholdLevel | None = None,
+        voc_threshold_advanced: bool = False,
+        lux_threshold: ThresholdLevel | None = None,
+        slave_rotation: SlaveRotation | None = None,
+    ) -> bool:
+        """Set shared ECOCOMFORT sensor thresholds and/or slave rotation."""
+        command = create_advanced_settings_command(
+            device_sn,
+            humidity_threshold=humidity_threshold,
+            humidity_threshold_advanced=humidity_threshold_advanced,
+            voc_threshold=voc_threshold,
+            voc_threshold_advanced=voc_threshold_advanced,
+            lux_threshold=lux_threshold,
+            slave_rotation=slave_rotation,
+        )
+        return await self._send_command(command)
+
 
 class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
     """API client for specific ECOCOMFORT 2.0 communication."""
@@ -251,25 +312,6 @@ class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
         await asyncio.sleep(REFRESH_DELAY)
         return True
 
-    async def set_temperature_and_humidity_offsets(
-        self, device_sn: str, temperature_offset: float, humidity_offset: int
-    ) -> bool:
-        """Set temperature (°C) and humidity (%) calibration offsets.
-
-        Both values must be provided together since they share the same device register -
-        pass the device's current value for whichever offset isn't being changed.
-        """
-        command = create_offsets_command(device_sn, temperature_offset, humidity_offset)
-        payload = {"trama": command}
-        await post_to_session(
-            self._session,
-            "eco/send/",
-            headers=self._token_headers,
-            json_payload=payload,
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
-
     async def set_advanced_settings(
         self,
         device_sn: str,
@@ -293,7 +335,7 @@ class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
         the threshold fields without further verification. `slave_rotation` was confirmed
         reliable both ways.
         """
-        command = create_advanced_settings_command(
+        return await self._set_advanced_settings(
             device_sn,
             humidity_threshold=humidity_threshold,
             humidity_threshold_advanced=humidity_threshold_advanced,
@@ -302,18 +344,9 @@ class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
             lux_threshold=lux_threshold,
             slave_rotation=slave_rotation,
         )
-        payload = {"trama": command}
-        await post_to_session(
-            self._session,
-            "eco/send/",
-            headers=self._token_headers,
-            json_payload=payload,
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
 
     async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
-        """Set the direction of rotation for a slave/satellite unit relative to its master."""
+        """Set the direction of a slave unit relative to its master."""
         return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
 
 
@@ -321,6 +354,68 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
     """API client for ECOCOMFORT 3 communication."""
 
     _endpoint_prefix = "eco3"
+
+    async def set_advanced_settings(
+        self,
+        device_sn: str,
+        *,
+        humidity_threshold: ThresholdLevel | None = None,
+        humidity_threshold_advanced: bool = False,
+        co2_threshold: ThresholdLevel | None = None,
+        co2_threshold_advanced: bool = False,
+        lux_threshold: ThresholdLevel | None = None,
+        slave_rotation: SlaveRotation | None = None,
+    ) -> bool:
+        """Set ECOCOMFORT 3 sensor thresholds and/or slave rotation."""
+        return await self._set_advanced_settings(
+            device_sn,
+            humidity_threshold=humidity_threshold,
+            humidity_threshold_advanced=humidity_threshold_advanced,
+            voc_threshold=co2_threshold,
+            voc_threshold_advanced=co2_threshold_advanced,
+            lux_threshold=lux_threshold,
+            slave_rotation=slave_rotation,
+        )
+
+    async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
+        """Set the direction of a slave unit relative to its master."""
+        return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
+
+    async def set_season(self, device_sn: str, season: Season) -> bool:
+        """Set winter/summer mode on an ECOCOMFORT 3 device."""
+        command = create_season_free_cooling_command(device_sn, season=season)
+        await post_to_session(
+            self._session,
+            "eco3/send/",
+            headers=self._token_headers,
+            json_payload={"trama": command},
+        )
+        await post_to_session(
+            self._session,
+            "eco3/setdata/",
+            headers=self._token_headers,
+            json_payload={"serial": device_sn, "data": json.dumps({"ws": int(season)})},
+        )
+        await asyncio.sleep(REFRESH_DELAY)
+        return True
+
+    async def set_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> bool:
+        """Set the free-cooling level on an ECOCOMFORT 3 device."""
+        command = create_season_free_cooling_command(device_sn, free_cooling=level)
+        await post_to_session(
+            self._session,
+            "eco3/send/",
+            headers=self._token_headers,
+            json_payload={"trama": command},
+        )
+        await post_to_session(
+            self._session,
+            "eco3/freecoolset/",
+            headers=self._token_headers,
+            json_payload={"serial": device_sn, "value": int(level)},
+        )
+        await asyncio.sleep(REFRESH_DELAY)
+        return True
 
 
 class IntelliClimaAPI:

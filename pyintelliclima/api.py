@@ -320,16 +320,29 @@ class _IntelliClimaVMCAPI:
         )
         return await self._send_command(command)
 
+    async def _write_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> None:
+        """Write a free cooling level to both the device and the cloud-side record."""
+        command = create_season_free_cooling_command(device_sn, free_cooling=level)
+        await self._post("send/", {"trama": command})
+        await self._post("freecoolset/", {"serial": device_sn, "value": int(level)})
+
     async def set_season(self, device_sn: str, season: Season) -> bool:
         """Set winter/summer mode for an ecocomfort device.
 
         The command frame has to go out before `setdata/`: that endpoint only updates
         the cloud-side record, so on its own the new value reads back from a status
         poll while the device keeps running its old setting.
+
+        Switching to winter also clears free cooling, which the vendor app does for the
+        same reason. Free cooling is summer-only, and the app's UI just hides a stale
+        level out of season rather than resetting it, so nothing else would ever clear
+        the device's own register.
         """
         command = create_season_free_cooling_command(device_sn, season=season)
         await self._post("send/", {"trama": command})
         await self._post("setdata/", {"serial": device_sn, "data": json.dumps({"ws": int(season)})})
+        if season is Season.winter:
+            await self._write_free_cooling(device_sn, FreeCoolingLevel.off)
         await asyncio.sleep(REFRESH_DELAY)
         return True
 
@@ -338,9 +351,7 @@ class _IntelliClimaVMCAPI:
 
         As with `set_season`, `freecoolset/` alone never reaches the device.
         """
-        command = create_season_free_cooling_command(device_sn, free_cooling=level)
-        await self._post("send/", {"trama": command})
-        await self._post("freecoolset/", {"serial": device_sn, "value": int(level)})
+        await self._write_free_cooling(device_sn, level)
         await asyncio.sleep(REFRESH_DELAY)
         return True
 

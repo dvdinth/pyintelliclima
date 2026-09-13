@@ -71,6 +71,9 @@ an ECOCOMFORT 2.0.
   unexpected value from one device (for example an ECOCOMFORT 3 on an account that also
   has ECOCOMFORT 2.0 units) took down the whole poll. Such a device is now logged and
   skipped.
+- `set_season()` now clears free cooling when switching to winter, as the vendor app does.
+  Free cooling is summer-only and the app's UI merely hides a stale level out of season, so
+  nothing else ever cleared the device's own register.
 - Login now sends the `TOKEN` header the vendor app sends on its unauthenticated requests:
   SHA-256 of today's date as `DDMMYYYY`. The server does not appear to enforce it today, but
   login had no token at all, so it would break outright if that changed.

@@ -155,6 +155,31 @@ async def test_set_season_updates_device_and_server_state(mock_post):
         "serial": "AABBCCDD",
         "data": '{"ws": 0}',
     }
+    # Winter clears free cooling on the device as well as in the cloud record.
+    assert mock_post.await_args_list[2].args == (session, "eco3/send/")
+    assert mock_post.await_args_list[2].kwargs["json_payload"] == {
+        "trama": "0AAABBCCDD00182F002000007F7F7F7F707F000000000000D80D"
+    }
+    assert mock_post.await_args_list[3].args == (session, "eco3/freecoolset/")
+    assert mock_post.await_args_list[3].kwargs["json_payload"] == {
+        "serial": "AABBCCDD",
+        "value": 0,
+    }
+
+
+@patch("pyintelliclima.api.REFRESH_DELAY", 0)
+@patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
+async def test_set_season_summer_leaves_free_cooling_alone(mock_post):
+    session = MagicMock()
+    api = IntelliClimaEcocomfort3API(session, token_headers={"TOKEN": "tok"})
+    mock_post.return_value = {"status": "OK"}
+
+    assert await api.set_season("AABBCCDD", Season.summer)
+
+    assert [call.args[1] for call in mock_post.await_args_list] == [
+        "eco3/send/",
+        "eco3/setdata/",
+    ]
 
 
 @patch("pyintelliclima.api.REFRESH_DELAY", 0)

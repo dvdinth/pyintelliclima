@@ -595,9 +595,14 @@ class IntelliClimaAPI:
         except (KeyError, json.JSONDecodeError):
             device_data["config"] = device_data.get("config")
 
-        # The low nibble contains the airflow mode. ECOCOMFORT devices may
-        # set flags in the upper nibble (for example, ECOCOMFORT 3 has been
-        # observed returning 20 for sensor mode: 0x10 | 0x04).
+        # These are the last commanded setpoints, not the running state - use
+        # decode_fan_state() on mode_state/speed_state for that.
+        #
+        # Only the mode byte is masked. It packs the "not manually fixed" flag beside a
+        # real direction in the low nibble (ECOCOMFORT 3 reports 20 for sensor mode:
+        # 0x10 | 0x04), whereas for the speed byte that flag is the whole value -
+        # FanSpeed.auto is 0x10 with the speed bits at zero, so masking it would read
+        # back as off.
         mode_set = int(device_data["mode_set"]) & 0x0F
         device_data["mode_set"] = FanMode(str(mode_set))
         device_data["speed_set"] = FanSpeed(device_data["speed_set"])

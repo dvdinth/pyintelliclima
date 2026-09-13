@@ -58,12 +58,15 @@ The library has four modules under `pyintelliclima/`:
 ## Key API Details
 
 - Auth: POST to `user/login/{username}/{sha256_password}` with a device registration JSON body.
-  Returns `token` and `id` used as `TOKEN`/`TOKENID` headers on all subsequent requests.
-- Device discovery: POST to `casa/elenco3/{user_id}`. Device type `"ECO"` = ECOCOMFORT 2.0,
-  `"ECO3"` = ECOCOMFORT 3; `"CH"` devices are filtered out (boiler controllers, not implemented).
-  Any other type is logged and skipped.
-- Status polling: POST to `sync/cronos400` with a list of device IDs. Response `data[]` items have
-  `model` and `config` fields that are JSON strings and must be parsed before passing to `dacite`.
+  Returns `token` and `id` used as `TOKEN`/`TOKENID` headers on all subsequent requests. A
+  rejected login is an HTTP 200 whose body carries a non-`OK` `status` and an `error` of
+  `NO_USERNAME`/`NO_PASSWORD`, which is why login alone skips `post_to_session`'s status check.
+- Device discovery: POST to `casa/elenco3/{user_id}`. The response's own `ecoIDs`/`eco3IDs`
+  arrays name the ECOCOMFORT 2.0 and ECOCOMFORT 3 devices; anything in `houses` that appears in
+  neither is a family we don't implement and is logged and skipped.
+- Status polling: POST to `sync/cronos400` with a list of device IDs. Each `data[]` item names
+  its own family in `model`, a JSON string that has to be expanded before `dacite` sees it. Any
+  such nested field can arrive as JSON `null`, so expand it through `_load_json_field`.
 - Commands: POST to `eco/send/` (or `eco3/send/`) with `{"trama": "<hex command string>"}`.
 - The server's own JSON uses master/slave wording (`role`, `slv_rot`, `slv_addr`, `isMaster`,
   `*MasterIDs`). Dataclass fields mirror those keys verbatim because dacite matches by field

@@ -31,7 +31,7 @@ async def test_get_filter_status_dirty(mock_post):
         "change_filter": True,
     }
 
-    status = await api.ecocomfort.get_filter_status("12345678")
+    status = await api.ecocomfort2.get_filter_status("12345678")
 
     assert isinstance(status, IntelliClimaFilterStatus)
     assert status.change_filter is True
@@ -59,7 +59,7 @@ async def test_get_filter_status_clean(mock_post):
         "change_filter": False,
     }
 
-    status = await api.ecocomfort.get_filter_status("12345678")
+    status = await api.ecocomfort2.get_filter_status("12345678")
 
     assert status.change_filter is False
     assert status.stats == []
@@ -80,7 +80,7 @@ async def test_set_filter_tracking_active(mock_post):
         "change_filter": False,
     }
 
-    status = await api.ecocomfort.set_filter_tracking_active("12345678", True)
+    status = await api.ecocomfort2.set_filter_tracking_active("12345678", True)
 
     assert status.is_active is True
     called_args, called_kwargs = mock_post.call_args
@@ -103,7 +103,7 @@ async def test_set_filter_tracking_inactive(mock_post):
         "change_filter": False,
     }
 
-    status = await api.ecocomfort.set_filter_tracking_active("12345678", False)
+    status = await api.ecocomfort2.set_filter_tracking_active("12345678", False)
 
     assert status.is_active is False
     called_kwargs = mock_post.call_args.kwargs
@@ -125,7 +125,7 @@ async def test_reset_filter_counter(mock_post):
         "change_filter": False,
     }
 
-    status = await api.ecocomfort.reset_filter_counter("12345678")
+    status = await api.ecocomfort2.reset_filter_counter("12345678")
 
     assert status.from_date == "2026-08-04 00:00:00"
     assert status.totale == 0

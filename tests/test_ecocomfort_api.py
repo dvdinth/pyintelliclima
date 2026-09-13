@@ -4,7 +4,7 @@ import pytest
 
 from pyintelliclima.api import (
     IntelliClimaAPIError,
-    IntelliClimaEcocomfortAPI,
+    IntelliClimaEcocomfort2API,
     create_mode_speed_command,
 )
 
@@ -13,7 +13,7 @@ pytestmark = pytest.mark.asyncio
 
 async def test_set_token_headers():
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={"TOKEN": "old"})
+    api = IntelliClimaEcocomfort2API(session, token_headers={"TOKEN": "old"})
     await api.set_token_headers({"TOKEN": "new"})
     assert api._token_headers == {"TOKEN": "new"}
 
@@ -22,7 +22,7 @@ async def test_set_token_headers():
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_set_mode_speed_ok(mock_post):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={"TOKEN": "tok"})
+    api = IntelliClimaEcocomfort2API(session, token_headers={"TOKEN": "tok"})
 
     mock_post.return_value = {"status": "OK"}
     device_sn = "12345678"
@@ -44,7 +44,7 @@ async def test_set_mode_speed_ok(mock_post):
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_set_mode_speed_propagates_request_error(mock_post):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={})
+    api = IntelliClimaEcocomfort2API(session, token_headers={})
 
     mock_post.side_effect = IntelliClimaAPIError("Got non-OK response status: ERR")
 
@@ -52,10 +52,10 @@ async def test_set_mode_speed_propagates_request_error(mock_post):
         await api.set_mode_speed("12345678", "01", "02")
 
 
-@patch.object(IntelliClimaEcocomfortAPI, "set_mode_speed", new_callable=AsyncMock)
+@patch.object(IntelliClimaEcocomfort2API, "set_mode_speed", new_callable=AsyncMock)
 async def test_turn_off_calls_set_mode_speed(mock_set_mode_speed):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={})
+    api = IntelliClimaEcocomfort2API(session, token_headers={})
 
     mock_set_mode_speed.return_value = True
 
@@ -65,10 +65,10 @@ async def test_turn_off_calls_set_mode_speed(mock_set_mode_speed):
     mock_set_mode_speed.assert_awaited_once_with("ABCDEF01", mode="0", speed="0")
 
 
-@patch.object(IntelliClimaEcocomfortAPI, "set_mode_speed", new_callable=AsyncMock)
+@patch.object(IntelliClimaEcocomfort2API, "set_mode_speed", new_callable=AsyncMock)
 async def test_set_mode_speed_auto_calls_set_mode_speed(mock_set_mode_speed):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={})
+    api = IntelliClimaEcocomfort2API(session, token_headers={})
 
     mock_set_mode_speed.return_value = True
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pyintelliclima.api import (
-    IntelliClimaEcocomfortAPI,
+    IntelliClimaEcocomfort2API,
     create_advanced_settings_command,
     create_offsets_command,
 )
@@ -80,7 +80,7 @@ def test_create_advanced_settings_command_threshold_off_ignores_advanced_flag():
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_set_season(mock_post):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={"TOKEN": "tok"})
+    api = IntelliClimaEcocomfort2API(session, token_headers={"TOKEN": "tok"})
     mock_post.return_value = {"status": "OK", "serial": "12345678"}
 
     result = await api.set_season("12345678", Season.winter)
@@ -104,7 +104,7 @@ async def test_set_season(mock_post):
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_set_free_cooling(mock_post):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={"TOKEN": "tok"})
+    api = IntelliClimaEcocomfort2API(session, token_headers={"TOKEN": "tok"})
     mock_post.return_value = {"status": "OK", "value": 2, "serial": "12345678"}
 
     result = await api.set_free_cooling("12345678", FreeCoolingLevel.medium)
@@ -126,7 +126,7 @@ async def test_set_free_cooling(mock_post):
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_set_temperature_and_humidity_offsets(mock_post):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={"TOKEN": "tok"})
+    api = IntelliClimaEcocomfort2API(session, token_headers={"TOKEN": "tok"})
     mock_post.return_value = {"status": "OK"}
 
     result = await api.set_temperature_and_humidity_offsets("12345678", 1.5, 0)
@@ -138,10 +138,10 @@ async def test_set_temperature_and_humidity_offsets(mock_post):
 
 
 @pytest.mark.asyncio
-@patch.object(IntelliClimaEcocomfortAPI, "set_advanced_settings", new_callable=AsyncMock)
+@patch.object(IntelliClimaEcocomfort2API, "set_advanced_settings", new_callable=AsyncMock)
 async def test_set_slave_rotation_calls_set_advanced_settings(mock_set_advanced):
     session = MagicMock()
-    api = IntelliClimaEcocomfortAPI(session, token_headers={})
+    api = IntelliClimaEcocomfort2API(session, token_headers={})
     mock_set_advanced.return_value = True
 
     result = await api.set_slave_rotation("12345678", SlaveRotation.concordant)

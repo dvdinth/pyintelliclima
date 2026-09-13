@@ -213,7 +213,7 @@ class IntelliClimaVMCBase:
 
 
 @dataclass
-class IntelliClimaECO(IntelliClimaVMCBase):
+class IntelliClimaECO2(IntelliClimaVMCBase):
     """Status data returned by an ECOCOMFORT 2.0 device."""
 
 
@@ -482,7 +482,7 @@ class IntelliClimaFilterStatus:
 class IntelliClimaDevices:
     """Dataclass for storing intelliclima devices."""
 
-    ecocomfort2_devices: dict[str, IntelliClimaECO]
+    ecocomfort2_devices: dict[str, IntelliClimaECO2]
     c800_devices: dict[str, IntelliClimaC800]
     ecocomfort3_devices: dict[str, IntelliClimaECO3] = field(default_factory=dict)
 
@@ -499,4 +499,4 @@ class IntelliClimaDevices:
         return cls({}, {})
 
 
-AllIntelliClimaDevices = IntelliClimaECO | IntelliClimaECO3 | IntelliClimaC800
+AllIntelliClimaDevices = IntelliClimaECO2 | IntelliClimaECO3 | IntelliClimaC800

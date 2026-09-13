@@ -8,7 +8,7 @@ from pyintelliclima.api import IntelliClimaAPI
 from pyintelliclima.const import FanMode
 from pyintelliclima.intelliclima_types import (
     IntelliClimaDevices,
-    IntelliClimaECO,
+    IntelliClimaECO2,
     IntelliClimaECO3,
     IntelliClimaVMCBase,
 )
@@ -154,12 +154,12 @@ async def test_get_all_device_status_requests_eco2_and_eco3_together(mock_post):
     devices = await api.get_all_device_status()
 
     assert devices.num_devices == 2
-    assert isinstance(devices.ecocomfort2_devices["10"], IntelliClimaECO)
+    assert isinstance(devices.ecocomfort2_devices["10"], IntelliClimaECO2)
     assert isinstance(devices.ecocomfort2_devices["10"], IntelliClimaVMCBase)
     assert not isinstance(devices.ecocomfort2_devices["10"], IntelliClimaECO3)
     assert isinstance(devices.ecocomfort3_devices["30"], IntelliClimaECO3)
     assert isinstance(devices.ecocomfort3_devices["30"], IntelliClimaVMCBase)
-    assert not isinstance(devices.ecocomfort3_devices["30"], IntelliClimaECO)
+    assert not isinstance(devices.ecocomfort3_devices["30"], IntelliClimaECO2)
     request_body = mock_post.call_args.kwargs["json_payload"]
     assert request_body["ECOs"] == "10"
     assert request_body["ECO3s"] == "30"

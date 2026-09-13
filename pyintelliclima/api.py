@@ -26,7 +26,7 @@ from .const import (
 )
 from .intelliclima_types import (
     IntelliClimaDevices,
-    IntelliClimaECO,
+    IntelliClimaECO2,
     IntelliClimaECO3,
     IntelliClimaFilterStatus,
     IntelliClimaLoginBody,
@@ -352,7 +352,7 @@ class _IntelliClimaVMCAPI:
         return await self._post_filter_action(serial, "RESET")
 
 
-class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
+class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
     """API client for specific ECOCOMFORT 2.0 communication."""
 
     _endpoint_prefix = "eco"
@@ -459,7 +459,7 @@ class IntelliClimaAPI:
             "TOKENID": "",
             "TOKEN": "",
         }
-        self.ecocomfort = IntelliClimaEcocomfortAPI(self._session, self._token_headers)
+        self.ecocomfort2 = IntelliClimaEcocomfort2API(self._session, self._token_headers)
         self.ecocomfort3 = IntelliClimaEcocomfort3API(self._session, self._token_headers)
 
     async def authenticate(self) -> bool:
@@ -516,7 +516,7 @@ class IntelliClimaAPI:
     async def set_all_token_headers(self, token_headers: dict[str, Any]) -> None:
         """Sets main API token headers and child device API token headers."""
         self._token_headers = token_headers
-        await self.ecocomfort.set_token_headers(token_headers)
+        await self.ecocomfort2.set_token_headers(token_headers)
         await self.ecocomfort3.set_token_headers(token_headers)
 
     async def get_all_device_status(
@@ -556,7 +556,7 @@ class IntelliClimaAPI:
             self._session, "sync/cronos400", json_payload=get_device_body
         )
 
-        eco_devices: dict[str, IntelliClimaECO] = {}
+        eco_devices: dict[str, IntelliClimaECO2] = {}
         eco3_devices: dict[str, IntelliClimaECO3] = {}
         for device_data in response.get("data", []):
             try:
@@ -581,7 +581,7 @@ class IntelliClimaAPI:
             ecocomfort3_devices=eco3_devices,
         )
 
-    def _parse_device(self, device_data: dict[str, Any]) -> IntelliClimaECO | IntelliClimaECO3:
+    def _parse_device(self, device_data: dict[str, Any]) -> IntelliClimaECO2 | IntelliClimaECO3:
         """Turn one `sync/cronos400` entry into the dataclass for its device family."""
         # 'model' and 'config' arrive as JSON strings and have to be expanded before
         # dacite sees them.
@@ -604,7 +604,7 @@ class IntelliClimaAPI:
 
         if self.device_id_types.get(str(device_data["id"])) == "ECO3":
             return from_dict(data_class=IntelliClimaECO3, data=device_data)
-        return from_dict(data_class=IntelliClimaECO, data=device_data)
+        return from_dict(data_class=IntelliClimaECO2, data=device_data)
 
     async def set_house_and_device_ids(self) -> None:
         """Finds the user's houses and their corresponding devices."""

@@ -2,14 +2,14 @@ from .api import (
     IntelliClimaAPI,
     IntelliClimaAPIError,
     IntelliClimaAuthError,
-    IntelliClimaEcocomfortAPI,
+    IntelliClimaEcocomfort2API,
     IntelliClimaEcocomfort3API,
 )
 from .intelliclima_types import (
     FanState,
     IntelliClimaC800,
     IntelliClimaDevices,
-    IntelliClimaECO,
+    IntelliClimaECO2,
     IntelliClimaECO3,
     IntelliClimaLoginBody,
     IntelliClimaVMCBase,
@@ -17,14 +17,14 @@ from .intelliclima_types import (
 )
 
 __all__ = (
-    "IntelliClimaEcocomfortAPI",
+    "IntelliClimaEcocomfort2API",
     "IntelliClimaEcocomfort3API",
     "IntelliClimaAPI",
     "IntelliClimaAPIError",
     "IntelliClimaAuthError",
     "IntelliClimaDevices",
     "IntelliClimaC800",
-    "IntelliClimaECO",
+    "IntelliClimaECO2",
     "IntelliClimaECO3",
     "IntelliClimaVMCBase",
     "IntelliClimaLoginBody",

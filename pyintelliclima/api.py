@@ -30,6 +30,7 @@ from .intelliclima_types import (
     IntelliClimaECO2,
     IntelliClimaECO3,
     IntelliClimaFilterStatus,
+    IntelliClimaGetDeviceBody,
     IntelliClimaLoginBody,
 )
 
@@ -610,14 +611,16 @@ class IntelliClimaAPI:
         """Poll all devices."""
         devices_eco_string = ",".join(self.ecocomfort2_ids)
         devices_eco3_string = ",".join(self.ecocomfort3_ids)
-        get_device_body = {
-            "IDs": "",
-            "ECOs": devices_eco_string,
-            "ECO3s": devices_eco3_string,
-            "includi_eco": True,
-            "includi_ledot": True,
-            "includi_eco3": True,
-        }
+        get_device_body = asdict(
+            IntelliClimaGetDeviceBody(
+                IDs="",
+                ECOs=devices_eco_string,
+                ECO3s=devices_eco3_string,
+                includi_eco=True,
+                includi_ledot=True,
+                includi_eco3=True,
+            )
+        )
         LOGGER.debug(
             "Obtaining status for IntelliClima ECO devices: %s; ECO3 devices: %s",
             devices_eco_string,

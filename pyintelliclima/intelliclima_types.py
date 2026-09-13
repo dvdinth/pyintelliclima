@@ -93,17 +93,18 @@ class IntelliClimaGetHousesResponse:
 
 @dataclass
 class IntelliClimaGetDeviceBody:
-    """Request format for the device status polling request."""
+    """Request format for the device status polling request.
+
+    The vendor app also sends `C900s`/`RHINOs` and their `includi_*` flags. They are
+    omitted here because this library implements neither family, and asking for a family
+    whose ID list would always be empty only invites devices we cannot parse.
+    """
 
     IDs: str
     ECOs: str
-    C900s: str
-    RHINOs: str
     ECO3s: str
     includi_eco: bool
     includi_ledot: bool
-    includi_c900: bool
-    includi_rhino: bool
     includi_eco3: bool
 
 

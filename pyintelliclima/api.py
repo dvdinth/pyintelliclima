@@ -43,6 +43,13 @@ VMC_DATACLASSES: dict[str, type[IntelliClimaECO2] | type[IntelliClimaECO3]] = {
     "ECO3": IntelliClimaECO3,
 }
 
+# `error` values a rejected login can carry, as the vendor app's own login screen
+# distinguishes them. Anything else is a server-side failure, not a credential problem.
+LOGIN_AUTH_ERRORS = {
+    "NO_USERNAME": "Unknown username",
+    "NO_PASSWORD": "No or incorrect password",
+}
+
 
 def generate_read_url(path: str) -> str:
     """Helper function for generating the request url."""
@@ -54,13 +61,20 @@ async def post_to_session(
     api_url: str,
     headers: dict[str, Any] | None = None,
     json_payload: dict[str, Any] | None = None,
+    *,
+    raise_on_status: bool = True,
 ) -> dict[str, Any]:
-    """Send a POST HTTP request and convert response back to dictionary."""
+    """Send a POST HTTP request and convert response back to dictionary.
+
+    The server reports its own failures in the body rather than in the HTTP status, so
+    a non-`OK` `status` raises. Pass `raise_on_status=False` when the caller needs to
+    read the body's `error` field to tell one failure from another.
+    """
     async with session.post(generate_read_url(api_url), headers=headers, json=json_payload) as resp:
         resp.raise_for_status()
         response_text = await resp.text()
         response = json.loads(response_text)
-        if response.get("status") != "OK":
+        if raise_on_status and response.get("status") != "OK":
             msg = f"Got non-OK response status: {response.get('status')}"
             raise IntelliClimaAPIError(msg)
     return response
@@ -514,18 +528,28 @@ class IntelliClimaAPI:
             LOGGER.info("Login with Intelliclima user: %s", self._username)
             LOGGER.debug("Login payload: %s", json.dumps(login_payload, indent=2))
 
+            # A rejected login is an HTTP 200 whose body carries the reason, so the
+            # status check has to be done here rather than in post_to_session: bad
+            # credentials must surface as IntelliClimaAuthError and not as a generic
+            # API error, or a consumer cannot tell a changed password from an outage.
             response = await post_to_session(
                 self._session,
                 f"user/login/{self._username}/{hashed_password}",
                 headers={"TOKEN": create_request_token()},
                 json_payload=login_payload,
+                raise_on_status=False,
             )
+
+            if response.get("status") != "OK":
+                error = response.get("error")
+                if error in LOGIN_AUTH_ERRORS:
+                    raise IntelliClimaAuthError(LOGIN_AUTH_ERRORS[error])
+                msg = f"Login failed with status {response.get('status')!r}, error {error!r}"
+                raise IntelliClimaAPIError(msg)
 
             self.auth_token = response.get("token")
             self.user_id = response.get("id")
 
-            if response.get("error") == "NO_PASSWORD":
-                raise IntelliClimaAuthError("No or incorrect password")
             if not self.auth_token:
                 raise IntelliClimaAuthError("No token in response")
             if not self.user_id:

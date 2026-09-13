@@ -139,6 +139,77 @@ class IntelliClimaECOCustomProgram:
         return json.dumps(asdict(self))
 
 
+@dataclass(frozen=True)
+class FanState:
+    """Decoded running state, as opposed to the `*_set` setpoints."""
+
+    direction: FanMode
+    speed: FanSpeedState
+    preset: FanPreset
+    profiled: bool
+    advanced: bool
+    boost: bool
+    night: bool
+
+
+def decode_fan_state(mode_state: str, speed_state: str) -> FanState:
+    """Decode a device's reported `mode_state`/`speed_state` registers.
+
+    Prefer this over the `mode_set`/`speed_set` fields: those hold the last value
+    *commanded*, which is not what the unit is doing. The vendor app displays this
+    pair and never those.
+
+    `speed_state` packs the running speed in its low three bits and four flags in
+    its high nibble; `mode_state` carries the airflow direction in its low nibble.
+    The flag arithmetic mirrors the vendor app, including the order of the
+    overrides: boost wins over the advanced bump, and night wins over both.
+
+    Raises `ValueError` if either register is not an integer, or if the direction
+    nibble is not a known `FanMode`.
+    """
+    mode_raw = int(mode_state)
+    speed_raw = int(speed_state)
+
+    night = bool(speed_raw & SPEED_FLAG_NIGHT)
+    boost = bool(speed_raw & SPEED_FLAG_BOOST)
+    advanced = bool(speed_raw & SPEED_FLAG_ADVANCED)
+    profiled = bool(speed_raw & SPEED_FLAG_PROFILED)
+
+    speed = speed_raw & SPEED_VALUE_MASK
+    if advanced and 1 < speed < 5:
+        speed += 1
+    if boost:
+        speed = 5
+    if night:
+        speed = 1
+
+    direction = FanMode(str(mode_raw & MODE_DIRECTION_MASK))
+
+    # Deliberately not a port of the app's own fan_mode: that returns -1 for 50 of
+    # the 256 speed_state values, and conflates auto with program into one value
+    # that its template then has to disambiguate by testing direction anyway.
+    if direction is FanMode.sensor:
+        preset = FanPreset.auto
+    elif profiled:
+        preset = FanPreset.program
+    elif night or speed == FanSpeedState.sleep:
+        preset = FanPreset.sleep
+    elif direction is FanMode.off or speed == FanSpeedState.off:
+        preset = FanPreset.off
+    else:
+        preset = FanPreset.manual
+
+    return FanState(
+        direction=direction,
+        speed=FanSpeedState(speed),
+        preset=preset,
+        profiled=profiled,
+        advanced=advanced,
+        boost=boost,
+        night=night,
+    )
+
+
 @dataclass
 class IntelliClimaVMCBase:
     """Status fields common to the ECOCOMFORT VMC family."""
@@ -215,6 +286,23 @@ class IntelliClimaVMCBase:
                 " ", ""
             )
 
+    @property
+    def fan_state(self) -> FanState:
+        """What the unit is actually doing, decoded from `mode_state`/`speed_state`.
+
+        Read this rather than `mode_set`/`speed_set`, which hold the last values
+        *commanded* and say nothing about overrides the device applied afterwards.
+
+        The `*_set` fields remain the right source for a write that wants to preserve
+        "the current speed": the running speed may be a boost or night-profile override,
+        and commanding that back would make a temporary override permanent.
+
+        Raises `ValueError` if either register holds a value the protocol does not
+        define. Nothing else on the dataclass depends on it, so a device with an
+        unexpected register still reports its temperature, humidity and air quality.
+        """
+        return decode_fan_state(self.mode_state, self.speed_state)
+
 
 @dataclass
 class IntelliClimaECO2(IntelliClimaVMCBase):
@@ -224,77 +312,6 @@ class IntelliClimaECO2(IntelliClimaVMCBase):
 @dataclass
 class IntelliClimaECO3(IntelliClimaVMCBase):
     """Status data returned by an ECOCOMFORT 3 device."""
-
-
-@dataclass(frozen=True)
-class FanState:
-    """Decoded running state, as opposed to the `*_set` setpoints."""
-
-    direction: FanMode
-    speed: FanSpeedState
-    preset: FanPreset
-    profiled: bool
-    advanced: bool
-    boost: bool
-    night: bool
-
-
-def decode_fan_state(mode_state: str, speed_state: str) -> FanState:
-    """Decode a device's reported `mode_state`/`speed_state` registers.
-
-    Prefer this over the `mode_set`/`speed_set` fields: those hold the last value
-    *commanded*, which is not what the unit is doing. The vendor app displays this
-    pair and never those.
-
-    `speed_state` packs the running speed in its low three bits and four flags in
-    its high nibble; `mode_state` carries the airflow direction in its low nibble.
-    The flag arithmetic mirrors the vendor app, including the order of the
-    overrides: boost wins over the advanced bump, and night wins over both.
-
-    Raises `ValueError` if either register is not an integer, or if the direction
-    nibble is not a known `FanMode`.
-    """
-    mode_raw = int(mode_state)
-    speed_raw = int(speed_state)
-
-    night = bool(speed_raw & SPEED_FLAG_NIGHT)
-    boost = bool(speed_raw & SPEED_FLAG_BOOST)
-    advanced = bool(speed_raw & SPEED_FLAG_ADVANCED)
-    profiled = bool(speed_raw & SPEED_FLAG_PROFILED)
-
-    speed = speed_raw & SPEED_VALUE_MASK
-    if advanced and 1 < speed < 5:
-        speed += 1
-    if boost:
-        speed = 5
-    if night:
-        speed = 1
-
-    direction = FanMode(str(mode_raw & MODE_DIRECTION_MASK))
-
-    # Deliberately not a port of the app's own fan_mode: that returns -1 for 50 of
-    # the 256 speed_state values, and conflates auto with program into one value
-    # that its template then has to disambiguate by testing direction anyway.
-    if direction is FanMode.sensor:
-        preset = FanPreset.auto
-    elif profiled:
-        preset = FanPreset.program
-    elif night or speed == FanSpeedState.sleep:
-        preset = FanPreset.sleep
-    elif direction is FanMode.off or speed == FanSpeedState.off:
-        preset = FanPreset.off
-    else:
-        preset = FanPreset.manual
-
-    return FanState(
-        direction=direction,
-        speed=FanSpeedState(speed),
-        preset=preset,
-        profiled=profiled,
-        advanced=advanced,
-        boost=boost,
-        night=night,
-    )
 
 
 @dataclass

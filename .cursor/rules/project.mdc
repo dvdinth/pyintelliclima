@@ -69,7 +69,9 @@ The library has four modules under `pyintelliclima/`:
   `*MasterIDs`). Dataclass fields mirror those keys verbatim because dacite matches by field
   name, but our own API surface says main/satellite instead - follow that in new code.
 - `mode_set`/`speed_set` are the last *commanded* values and are not what the unit is doing. The
-  vendor app displays `mode_state`/`speed_state` instead; use `decode_fan_state()` for those.
+  vendor app displays `mode_state`/`speed_state` instead; read `device.fan_state` for those.
+  Writes that preserve "the current speed" should still use `speed_set`, or a temporary boost
+  or night override gets commanded back as a permanent setting.
 
 ## Dependencies
 

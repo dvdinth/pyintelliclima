@@ -41,9 +41,14 @@ as unverified raw data.
 ### Reading the current mode and speed
 
 `mode_set` and `speed_set` hold the last *commanded* values, which is not necessarily what the
-unit is doing - the vendor app never displays them. Pass the reported `mode_state` and
-`speed_state` registers to `decode_fan_state()` instead, which returns the running direction,
-speed, preset, and the boost/night/profiled/advanced flags.
+unit is doing - the vendor app never displays them. Read `device.fan_state` instead, which
+decodes the reported `mode_state`/`speed_state` registers into the running direction, speed,
+preset, and the boost/night/profiled/advanced flags.
+
+One exception: when a write needs to preserve "the current speed", keep reading `speed_set`.
+The running speed may be a boost or night-profile override, and commanding that back would
+make a temporary override permanent. `FanSpeedState.boost` has no `FanSpeed` counterpart at
+all - boost is device-driven and lasts three minutes.
 
 ## Credits
 

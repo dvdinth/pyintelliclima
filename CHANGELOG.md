@@ -27,6 +27,9 @@ an ECOCOMFORT 2.0.
   additionally sends the `0x26` reset command frame, which the ECOCOMFORT 2.0 reset does
   not need. Only `RESET` is reachable in the vendor app's ECOCOMFORT 3 UI, so the other
   three actions are unverified against a real device.
+- `IntelliClimaVMCBase.fan_state`, decoding the device's own `mode_state`/`speed_state`
+  registers so consumers never have to pair the two by hand. `mode_set`/`speed_set` remain the
+  right source for a write that wants to preserve the current speed.
 - `decode_fan_state()`, returning a `FanState` with the running direction, speed, preset and
   the profiled/advanced/boost/night flags, plus the `FanSpeedState` and `FanPreset` enums.
   `mode_set`/`speed_set` are the last *commanded* values and are not what the unit is doing;

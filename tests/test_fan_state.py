@@ -10,9 +10,10 @@ import json
 from pathlib import Path
 
 import pytest
+from dacite import from_dict
 
-from pyintelliclima.const import FanMode, FanPreset, FanSpeedState
-from pyintelliclima.intelliclima_types import decode_fan_state
+from pyintelliclima.const import FanMode, FanPreset, FanSpeed, FanSpeedState
+from pyintelliclima.intelliclima_types import IntelliClimaECO3, decode_fan_state
 
 
 def app_speed_and_flags(speed_state: int) -> tuple[int, bool, bool, bool, bool]:
@@ -65,7 +66,9 @@ def test_direction_is_the_mode_state_low_nibble():
 
 
 def test_decode_fixture_snapshot():
-    fixture = json.loads((Path(__file__).parent / "fixtures" / "ecocomfort3_status.json").read_text())
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "ecocomfort3_status.json").read_text()
+    )
     device = fixture["data"][0]
 
     state = decode_fan_state(device["mode_state"], device["speed_state"])
@@ -115,3 +118,19 @@ def test_preset_off():
 def test_unknown_direction_nibble_raises():
     with pytest.raises(ValueError, match="not a valid FanMode"):
         decode_fan_state("7", "0")
+
+
+def test_device_exposes_its_decoded_state():
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "ecocomfort3_status.json").read_text()
+    )
+    data = dict(fixture["data"][0])
+    data["model"] = json.loads(data["model"])
+    data["mode_set"] = FanMode.sensor
+    data["speed_set"] = FanSpeed.auto
+    device = from_dict(data_class=IntelliClimaECO3, data=data)
+
+    # The setpoints say "auto"; the running state says which speed auto settled on.
+    assert device.speed_set is FanSpeed.auto
+    assert device.fan_state.speed is FanSpeedState.speed2
+    assert device.fan_state.preset is FanPreset.auto

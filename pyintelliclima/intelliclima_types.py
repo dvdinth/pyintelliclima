@@ -275,6 +275,9 @@ class IntelliClimaVMCBase:
     rssi: str | None
     aqi: str | None
     co2_thrs: str | None
+    # ECOCOMFORT 3's own "filters need changing" flag ("1" = change due). It is the only
+    # filter signal that generation has: the vendor app reads this and never asks
+    # `eco3/filters/` to calculate wear the way it does for ECOCOMFORT 2.0.
     dev_state: str | None
     online_status: bool
     online_status_debug: str

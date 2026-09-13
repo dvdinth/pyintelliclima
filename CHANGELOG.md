@@ -35,6 +35,10 @@ an ECOCOMFORT 2.0.
   `mode_set`/`speed_set` are the last *commanded* values and are not what the unit is doing;
   the vendor app displays `mode_state`/`speed_state`, and `speed_state` is a bitfield that was
   not previously decoded at all.
+- The protocol enums (`FanMode`, `FanSpeed`, `FanSpeedState`, `FanPreset`, `Season`,
+  `FreeCoolingLevel`, `ThresholdLevel`, `SatelliteRotation`) and `IntelliClimaFilterStatus` are
+  exported from the package root. They are argument and return types of the public client
+  methods, so importing them from `pyintelliclima.const` was an avoidable detour.
 
 ### Changed
 
@@ -71,6 +75,22 @@ an ECOCOMFORT 2.0.
   read on both, but carries VOC in ppm on ECOCOMFORT 2.0 and an eCO2 estimate in ppm on
   ECOCOMFORT 3, so each needs its own Home Assistant device class. `co2` and `aqi` exist only on
   ECOCOMFORT 3; `co2` disagrees with a reference NDIR monitor and should not be used.
+- **Breaking:** `set_house_and_device_ids()` no longer swallows its own failures, and
+  `authenticate()` no longer runs it inside the handler that turns transport errors into
+  `IntelliClimaAuthError`. A failed lookup used to leave every ID list empty and return
+  success, which a caller could not tell apart from an account that owns no supported device.
+- README: documents the "no reading" sentinel for every sensor, not just the air-quality ones.
+  `tamb` reports `327.67` and `rh` reports `143` when the probe has no value, which a consumer
+  would otherwise publish as a measurement.
+- `IntelliClimaVMCBase.dev_state` is documented as ECOCOMFORT 3's filter-change flag, which is
+  the only filter signal that generation has - the vendor app never asks `eco3/filters/` to
+  calculate wear the way it does for ECOCOMFORT 2.0.
+- `create_advanced_settings_command()` documents that the register's trailing main-unit address
+  has no preserve marker, so any threshold write clears `slv_addr` on a satellite unit. The
+  vendor app's cloud path has the same hole; only its Bluetooth path can rewrite the address.
+- `IntelliClimaGetDeviceBody` now matches the request actually sent and is what builds it, so
+  the two cannot drift apart again. It had declared `C900s`/`RHINOs` and their `includi_*`
+  flags, which `get_all_device_status()` has never sent.
 
 ### Fixed
 
@@ -93,6 +113,18 @@ an ECOCOMFORT 2.0.
 - `create_advanced_settings_command()` no longer accepts a `lux_threshold_advanced` flag. The
   "advanced" bit is only ever set on the humidity and VOC/CO2 threshold bytes; neither
   generation sets it on the luminosity byte.
+- Rejected credentials now raise `IntelliClimaAuthError` rather than a bare
+  `IntelliClimaAPIError`. The server answers a bad login with an HTTP 200 whose body carries a
+  non-`OK` `status` and an `error` of `NO_USERNAME`/`NO_PASSWORD`, so `post_to_session()` raised
+  on the status before `authenticate()` could read the reason - making the `NO_PASSWORD` branch
+  unreachable and leaving a consumer unable to distinguish a changed password from an outage.
+- `get_all_device_status()` no longer drops a device whose nested `model` or `config` arrives as
+  JSON `null`. `json.loads(None)` raises `TypeError`, which the surrounding handler did not
+  catch, so one null field cost that device every reading on it. `config` is no longer parsed at
+  all: no VMC dataclass has the field and the vendor app never reads it for an ECOCOMFORT.
+- The command builders no longer left-pad an odd-length serial. A serial is always four bytes,
+  and each frame's length field is hardcoded for that, so padding produced a frame the device
+  would misread; such a serial now fails loudly instead.
 
 ## [0.4.1] - 2026-08-04
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import binascii
+import datetime
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +10,7 @@ from pyintelliclima.api import (
     bytes_to_hex,
     checksum_crc8_nrsc5,
     create_mode_speed_command,
+    create_request_token,
     hex_to_bytes,
 )
 from pyintelliclima.const import FanMode, FanSpeed
@@ -148,3 +150,13 @@ def test_create_mode_speed_command_standard_sn_lengths(sn: str):
     assert data[0] == 0x0A
     assert data[-1] == 0x0D
     assert data[-2] == checksum_crc8_nrsc5(data[1:-2])
+
+
+def test_create_request_token_format():
+    # The app hashes the date as DDMMYYYY in local time, zero-padded, four-digit year.
+    with patch("pyintelliclima.api.date") as mock_date:
+        mock_date.today.return_value = datetime.date(1999, 2, 5)
+        assert (
+            create_request_token()
+            == "37561eec3f0a246abcddb29acc2126823eb61ed05122e23c513f3baa3b64ecfd"
+        )

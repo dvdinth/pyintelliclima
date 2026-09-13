@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiohttp import ClientError
 
-from pyintelliclima.api import IntelliClimaAPI, IntelliClimaAuthError
+from pyintelliclima.api import IntelliClimaAPI, IntelliClimaAuthError, create_request_token
 
 pytestmark = pytest.mark.asyncio
 
@@ -32,6 +32,8 @@ async def test_authenticate_success(mock_set_house_devices, mock_post):
     assert api._token_headers["TOKEN"] == "token123"
     assert api._token_headers["TOKENID"] == "user-id"
     mock_set_house_devices.assert_awaited_once()
+    # Login has no token yet, so it carries the app's date-derived one instead.
+    assert mock_post.await_args.kwargs["headers"] == {"TOKEN": create_request_token()}
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)

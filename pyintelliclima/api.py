@@ -7,6 +7,7 @@ import json
 import logging
 import uuid
 from dataclasses import asdict
+from datetime import date
 from typing import Any, ClassVar, Literal
 
 from aiohttp import ClientError, ClientSession
@@ -55,6 +56,18 @@ async def post_to_session(
             msg = f"Got non-OK response status: {response.get('status')}"
             raise IntelliClimaAPIError(msg)
     return response
+
+
+def create_request_token() -> str:
+    """Build the `TOKEN` header the vendor app sends on unauthenticated requests.
+
+    Authenticated calls carry the login token, but login itself has no token yet, so the
+    app hashes today's date as `DDMMYYYY` in the phone's own local time instead. The
+    server does not appear to enforce it today - this library authenticated for a long
+    time without sending it - but it costs nothing and keeps login working if that
+    changes.
+    """
+    return hashlib.sha256(date.today().strftime("%d%m%Y").encode()).hexdigest()
 
 
 def hex_to_bytes(x: str) -> bytes:
@@ -484,6 +497,7 @@ class IntelliClimaAPI:
             response = await post_to_session(
                 self._session,
                 f"user/login/{self._username}/{hashed_password}",
+                headers={"TOKEN": create_request_token()},
                 json_payload=login_payload,
             )
 

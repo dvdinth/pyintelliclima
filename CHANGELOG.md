@@ -71,6 +71,9 @@ an ECOCOMFORT 2.0.
   unexpected value from one device (for example an ECOCOMFORT 3 on an account that also
   has ECOCOMFORT 2.0 units) took down the whole poll. Such a device is now logged and
   skipped.
+- Login now sends the `TOKEN` header the vendor app sends on its unauthenticated requests:
+  SHA-256 of today's date as `DDMMYYYY`. The server does not appear to enforce it today, but
+  login had no token at all, so it would break outright if that changed.
 - `create_advanced_settings_command()` no longer accepts a `lux_threshold_advanced` flag. The
   "advanced" bit is only ever set on the humidity and VOC/CO2 threshold bytes; neither
   generation sets it on the luminosity byte.

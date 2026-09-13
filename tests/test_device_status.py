@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_get_all_device_status_basic(mock_post):
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
-    api.device_id_types = {"10": "ECO", "11": "C800"}
+    api.ecocomfort2_ids = ["10"]
 
     device_data = {
         "id": "10",
@@ -108,7 +108,7 @@ async def test_get_all_device_status_basic(mock_post):
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_get_all_device_status_eco3(mock_post, caplog):
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
-    api.device_id_types = {"30": "ECO3"}
+    api.ecocomfort3_ids = ["30"]
 
     fixture_path = Path(__file__).parent / "fixtures" / "ecocomfort3_status.json"
     mock_post.return_value = json.loads(fixture_path.read_text())
@@ -139,7 +139,8 @@ async def test_get_all_device_status_eco3(mock_post, caplog):
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_get_all_device_status_requests_eco2_and_eco3_together(mock_post):
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
-    api.device_id_types = {"10": "ECO", "30": "ECO3"}
+    api.ecocomfort2_ids = ["10"]
+    api.ecocomfort3_ids = ["30"]
 
     fixture_path = Path(__file__).parent / "fixtures" / "ecocomfort3_status.json"
     eco3_response = json.loads(fixture_path.read_text())
@@ -166,22 +167,29 @@ async def test_get_all_device_status_requests_eco2_and_eco3_together(mock_post):
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
-async def test_get_all_device_status_skips_unsupported_types(mock_post, caplog):
+async def test_get_all_device_status_skips_other_device_families(mock_post, caplog):
+    # A RHINOCOMFORT 3 shares enough of this schema that dacite would accept it as an
+    # ECOCOMFORT 2.0, so the model check has to reject it rather than the field parsing.
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
-    api.device_id_types = {"40": "C900", "50": "RHINO"}
-    mock_post.return_value = {"status": "OK", "data": []}
+    api.ecocomfort2_ids = ["10"]
+
+    fixture_path = Path(__file__).parent / "fixtures" / "ecocomfort3_status.json"
+    rhino = dict(json.loads(fixture_path.read_text())["data"][0])
+    rhino["id"] = "50"
+    rhino["model"] = json.dumps({"modello": "RHINO", "tipo": "wifi"})
+    mock_post.return_value = {"status": "OK", "data": [rhino]}
 
     devices = await api.get_all_device_status()
 
     assert devices.num_devices == 0
-    assert "C900" in caplog.text
-    assert "RHINO" in caplog.text
+    assert "Skipping IntelliClima device 50" in caplog.text
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_get_all_device_status_isolates_unparsable_devices(mock_post, caplog):
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
-    api.device_id_types = {"10": "ECO", "11": "ECO", "30": "ECO3"}
+    api.ecocomfort2_ids = ["10", "11"]
+    api.ecocomfort3_ids = ["30"]
 
     fixture_path = Path(__file__).parent / "fixtures" / "ecocomfort3_status.json"
     eco3_response = json.loads(fixture_path.read_text())

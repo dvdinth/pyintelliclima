@@ -8,7 +8,7 @@ import logging
 import uuid
 from dataclasses import asdict
 from datetime import date
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, cast
 
 from aiohttp import ClientError, ClientSession
 from dacite import DaciteError, from_dict
@@ -34,6 +34,14 @@ from .intelliclima_types import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# `model.modello` values for the device families this library implements. The vendor app
+# uses the same two strings to branch its ECOCOMFORT UI; "RHINO" and "C900" are its other
+# values.
+VMC_DATACLASSES: dict[str, type[IntelliClimaECO2] | type[IntelliClimaECO3]] = {
+    "ECO": IntelliClimaECO2,
+    "ECO3": IntelliClimaECO3,
+}
 
 
 def generate_read_url(path: str) -> str:
@@ -477,7 +485,8 @@ class IntelliClimaAPI:
         self.auth_token: str | None = None
         self.user_id: str | None = None
         self.house_ids: list[str] = []
-        self.device_id_types: dict[str, str] = {}
+        self.ecocomfort2_ids: list[str] = []
+        self.ecocomfort3_ids: list[str] = []
         self._mono_url = API_BASE_URL + API_MONO
         self._token_headers = {
             "TOKENID": "",
@@ -548,21 +557,8 @@ class IntelliClimaAPI:
         self,
     ) -> IntelliClimaDevices:
         """Poll all devices."""
-        device_ids_eco: list[str] = []
-        device_ids_eco3: list[str] = []
-        for device_id, device_type in self.device_id_types.items():
-            if device_type == "ECO":
-                device_ids_eco.append(str(device_id))
-            elif device_type == "ECO3":
-                device_ids_eco3.append(str(device_id))
-            else:
-                LOGGER.warning(
-                    "Ignoring unsupported IntelliClima device type %s",
-                    device_type,
-                )
-
-        devices_eco_string = ",".join(device_ids_eco)
-        devices_eco3_string = ",".join(device_ids_eco3)
+        devices_eco_string = ",".join(self.ecocomfort2_ids)
+        devices_eco3_string = ",".join(self.ecocomfort3_ids)
         get_device_body = {
             "IDs": "",
             "ECOs": devices_eco_string,
@@ -607,7 +603,14 @@ class IntelliClimaAPI:
         )
 
     def _parse_device(self, device_data: dict[str, Any]) -> IntelliClimaECO2 | IntelliClimaECO3:
-        """Turn one `sync/cronos400` entry into the dataclass for its device family."""
+        """Turn one `sync/cronos400` entry into the dataclass for its device family.
+
+        The family comes from `model.modello` in the entry itself, which is what the
+        vendor app dispatches on throughout - it never consults the discovery response
+        for this. A model we don't implement raises, so the caller skips that one device
+        rather than mis-parsing it: RHINOCOMFORT 3 in particular shares enough of this
+        schema that dacite would otherwise accept it as an ECOCOMFORT 2.0.
+        """
         # 'model' and 'config' arrive as JSON strings and have to be expanded before
         # dacite sees them.
         try:
@@ -632,12 +635,22 @@ class IntelliClimaAPI:
         device_data["mode_set"] = FanMode(str(mode_set))
         device_data["speed_set"] = FanSpeed(device_data["speed_set"])
 
-        if self.device_id_types.get(str(device_data["id"])) == "ECO3":
-            return from_dict(data_class=IntelliClimaECO3, data=device_data)
-        return from_dict(data_class=IntelliClimaECO2, data=device_data)
+        raw_model = device_data["model"]
+        model = cast("dict[str, Any]", raw_model) if isinstance(raw_model, dict) else {}
+        modello: str | None = model.get("modello")
+        if modello not in VMC_DATACLASSES:
+            msg = f"Unsupported IntelliClima model {modello!r}"
+            raise ValueError(msg)
+
+        return from_dict(data_class=VMC_DATACLASSES[modello], data=device_data)
 
     async def set_house_and_device_ids(self) -> None:
-        """Finds the user's houses and their corresponding devices."""
+        """Find the user's houses and the ECOCOMFORT devices in them.
+
+        Device families come from the response's own `ecoIDs`/`eco3IDs` arrays, which is
+        what the vendor app reads. The per-device `tipo` inside `houses` looks like it
+        would serve the same purpose, but no vendor code ever touches it.
+        """
 
         try:
             LOGGER.info(f"Obtaining IntelliClima house & devices for user: {self.user_id}")
@@ -650,11 +663,20 @@ class IntelliClimaAPI:
 
             houses = response.get("houses", {})
             self.house_ids = list(houses.keys())
-            self.device_id_types = {
-                str(device.get("id")): device.get("tipo")
+            self.ecocomfort2_ids = [str(device_id) for device_id in response.get("ecoIDs", [])]
+            self.ecocomfort3_ids = [str(device_id) for device_id in response.get("eco3IDs", [])]
+
+            # Everything else on the account is a device family this library does not
+            # implement - boiler controllers, RHINOCOMFORT units. Logged so an owner
+            # asking why their device is missing gets an answer.
+            supported = set(self.ecocomfort2_ids) | set(self.ecocomfort3_ids)
+            skipped = [
+                str(device.get("id"))
                 for house_id in self.house_ids
                 for device in houses[house_id]
-                if device.get("tipo") != "CH"
-            }
+                if str(device.get("id")) not in supported
+            ]
+            if skipped:
+                LOGGER.info("Ignoring unsupported IntelliClima devices: %s", ", ".join(skipped))
         except Exception as e:  # noqa: BLE001
             LOGGER.error(f"Error while getting houses for user: {self.user_id}: {e}")

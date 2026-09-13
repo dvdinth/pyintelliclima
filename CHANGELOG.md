@@ -51,6 +51,14 @@ an ECOCOMFORT 2.0.
   clients, since the endpoint prefix differs. Call `api.ecocomfort2.get_filter_status(sn)`
   or `api.ecocomfort3.get_filter_status(sn)` instead of `api.get_filter_status(sn)`.
   Previously an ECOCOMFORT 3 serial was silently posted to the ECOCOMFORT 2.0 endpoint.
+- **Breaking:** `IntelliClimaAPI.device_id_types` is replaced by `ecocomfort2_ids: list[str]`
+  and `ecocomfort3_ids: list[str]`. Device discovery now reads the `ecoIDs`/`eco3IDs` arrays
+  that `casa/elenco3` returns, and `_parse_device()` picks the dataclass from each status
+  entry's own `model.modello`. Both are what the vendor app uses; the per-device `tipo` we
+  read before is a field no vendor code touches, and it was the only thing routing a device
+  to `IntelliClimaECO3`. Devices of families this library does not implement are now
+  rejected on `modello` - previously a RHINOCOMFORT 3 would very likely have been accepted
+  as an ECOCOMFORT 2.0, since it shares most of this schema.
 - **Breaking:** `SlaveRotation` is renamed to `SatelliteRotation`, `set_slave_rotation()` to
   `set_satellite_rotation()`, and the `slave_rotation` keyword to `satellite_rotation`, following
   the Home Assistant guidance against master/slave terminology. "Satellite unit" is the vendor

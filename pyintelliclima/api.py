@@ -10,7 +10,7 @@ from dataclasses import asdict
 from typing import Any, ClassVar, Literal
 
 from aiohttp import ClientError, ClientSession
-from dacite import from_dict
+from dacite import DaciteError, from_dict
 
 from .const import (
     API_BASE_URL,
@@ -532,40 +532,55 @@ class IntelliClimaAPI:
             self._session, "sync/cronos400", json_payload=get_device_body
         )
 
-        # Parse 'model' and 'config' fields JSON strings to Python objects
         eco_devices: dict[str, IntelliClimaECO] = {}
         eco3_devices: dict[str, IntelliClimaECO3] = {}
         for device_data in response.get("data", []):
             try:
-                device_data["model"] = json.loads(device_data.get("model", "{}"))
-            except (KeyError, json.JSONDecodeError):
-                device_data["model"] = device_data.get("model")
+                device = self._parse_device(device_data)
+            except (KeyError, ValueError, TypeError, DaciteError):
+                # A single device the server describes unexpectedly must not cost every
+                # other device on the account its update for this poll.
+                LOGGER.exception(
+                    "Skipping IntelliClima device %s: could not parse status",
+                    device_data.get("id"),
+                )
+                continue
 
-            try:
-                device_data["config"] = json.loads(device_data.get("config", "{}"))
-            except (KeyError, json.JSONDecodeError):
-                device_data["config"] = device_data.get("config")
-
-            # The low nibble contains the airflow mode. ECOCOMFORT devices may
-            # set flags in the upper nibble (for example, ECOCOMFORT 3 has been
-            # observed returning 20 for sensor mode: 0x10 | 0x04).
-            mode_set = int(device_data["mode_set"]) & 0x0F
-            device_data["mode_set"] = FanMode(str(mode_set))
-            device_data["speed_set"] = FanSpeed(device_data["speed_set"])
-
-            device_id = str(device_data["id"])
-            if self.device_id_types.get(device_id) == "ECO3":
-                eco3_device = from_dict(data_class=IntelliClimaECO3, data=device_data)
-                eco3_devices[eco3_device.id] = eco3_device
+            if isinstance(device, IntelliClimaECO3):
+                eco3_devices[device.id] = device
             else:
-                eco_device = from_dict(data_class=IntelliClimaECO, data=device_data)
-                eco_devices[eco_device.id] = eco_device
+                eco_devices[device.id] = device
 
         return IntelliClimaDevices(
             ecocomfort2_devices=eco_devices,
             c800_devices={},
             ecocomfort3_devices=eco3_devices,
         )
+
+    def _parse_device(self, device_data: dict[str, Any]) -> IntelliClimaECO | IntelliClimaECO3:
+        """Turn one `sync/cronos400` entry into the dataclass for its device family."""
+        # 'model' and 'config' arrive as JSON strings and have to be expanded before
+        # dacite sees them.
+        try:
+            device_data["model"] = json.loads(device_data.get("model", "{}"))
+        except (KeyError, json.JSONDecodeError):
+            device_data["model"] = device_data.get("model")
+
+        try:
+            device_data["config"] = json.loads(device_data.get("config", "{}"))
+        except (KeyError, json.JSONDecodeError):
+            device_data["config"] = device_data.get("config")
+
+        # The low nibble contains the airflow mode. ECOCOMFORT devices may
+        # set flags in the upper nibble (for example, ECOCOMFORT 3 has been
+        # observed returning 20 for sensor mode: 0x10 | 0x04).
+        mode_set = int(device_data["mode_set"]) & 0x0F
+        device_data["mode_set"] = FanMode(str(mode_set))
+        device_data["speed_set"] = FanSpeed(device_data["speed_set"])
+
+        if self.device_id_types.get(str(device_data["id"])) == "ECO3":
+            return from_dict(data_class=IntelliClimaECO3, data=device_data)
+        return from_dict(data_class=IntelliClimaECO, data=device_data)
 
     async def _post_filter_action(
         self, serial: str, action: Literal["CALCULATE", "ACTIVATE", "DEACTIVATE", "RESET"]

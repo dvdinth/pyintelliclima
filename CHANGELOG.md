@@ -19,6 +19,14 @@ not hardcoded in this repo.
 - ECOCOMFORT 3 setters for temperature/humidity calibration, sensor thresholds, season,
   and free-cooling level.
 
+### Fixed
+
+- `get_all_device_status()` no longer loses every device's data when one device fails to
+  parse. Enum and dacite errors were raised straight out of the polling loop, so a single
+  unexpected value from one device (for example an ECOCOMFORT 3 on an account that also
+  has ECOCOMFORT 2.0 units) took down the whole poll. Such a device is now logged and
+  skipped.
+
 ## [0.4.1] - 2026-08-04
 
 ### Added

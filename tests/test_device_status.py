@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from dacite import WrongTypeError
 
 from pyintelliclima.api import IntelliClimaAPI
 from pyintelliclima.const import FanMode
@@ -180,81 +179,32 @@ async def test_get_all_device_status_skips_unsupported_types(mock_post, caplog):
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
-async def test_get_all_device_status_invalid_json_falls_back(mock_post):
+async def test_get_all_device_status_isolates_unparsable_devices(mock_post, caplog):
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
-    api.device_id_types = {"10": "ECO"}
+    api.device_id_types = {"10": "ECO", "11": "ECO", "30": "ECO3"}
 
-    device_data = {
-        "id": "10",
-        "crono_sn": "SN",
-        "status": "1",
-        "online": "1",
-        "command": "",
-        "model": "not-json",
-        "name": "Device 10",
-        "houses_id": "1",
-        "mode_set": "0",
-        "mode_state": "0",
-        "speed_set": "0",
-        "speed_state": "0",
-        "last_online": "",
-        "creation_date": "",
-        "fw": "",
-        "mac": "",
-        "macwifi": "",
-        "conn_num": "",
-        "conn_state": "",
-        "role": "1",
-        "rh_thrs": "",
-        "lux_thrs": "",
-        "voc_thrs": "",
-        "slv_rot": "",
-        "slv_addr": "",
-        "offset_temp": "",
-        "offset_hum": "",
-        "year": "",
-        "month": "",
-        "day": "",
-        "dow": "",
-        "hour": "",
-        "minute": "",
-        "second": "",
-        "dst": "",
-        "mode_prev": None,
-        "dir_state": "",
-        "auto_cycle": "",
-        "tamb": "",
-        "rh": "",
-        "voc_state": "",
-        "plun": json.dumps({"w": [0], "s": [0]}),
-        "pmar": json.dumps({"w": [0], "s": [0]}),
-        "pmer": json.dumps({"w": [0], "s": [0]}),
-        "pgio": json.dumps({"w": [0], "s": [0]}),
-        "pven": json.dumps({"w": [0], "s": [0]}),
-        "psab": json.dumps({"w": [0], "s": [0]}),
-        "pdom": json.dumps({"w": [0], "s": [0]}),
-        "pcustom": None,
-        "sfondo": "",
-        "tperc": None,
-        "fcool": "",
-        "ws": "",
-        "filter_from": "",
-        "filter_active": "",
-        "timezone": None,
-        "co2": None,
-        "sanification": None,
-        "rssi": None,
-        "aqi": None,
-        "co2_thrs": None,
-        "dev_state": None,
-        "online_status": True,
-        "online_status_debug": "",
-        "config": "not-json",
-    }
+    fixture_path = Path(__file__).parent / "fixtures" / "ecocomfort3_status.json"
+    eco3_response = json.loads(fixture_path.read_text())
+
+    # A 'model' that isn't JSON reaches dacite as a plain string and fails the
+    # IntelliClimaModelType field; an unknown speed is rejected by the enum. The two
+    # raise from different libraries, so both paths are worth covering.
+    bad_model = dict(eco3_response["data"][0])
+    bad_model["id"] = "10"
+    bad_model["model"] = "not-json"
+    bad_speed = dict(eco3_response["data"][0])
+    bad_speed["id"] = "11"
+    bad_speed["speed_set"] = "99"
+
     mock_post.return_value = {
         "status": "OK",
-        "data": [device_data],
+        "data": [bad_model, bad_speed, *eco3_response["data"]],
     }
 
-    with pytest.raises(WrongTypeError):
-        await api.get_all_device_status()
+    devices = await api.get_all_device_status()
+
+    assert devices.num_devices == 1
+    assert devices.ecocomfort2_devices == {}
+    assert "30" in devices.ecocomfort3_devices
+    assert "Skipping IntelliClima device 10" in caplog.text
+    assert "Skipping IntelliClima device 11" in caplog.text

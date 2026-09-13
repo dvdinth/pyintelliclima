@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 # API endpoints
 API_BASE_URL = "https://intelliclima.fantinicosmi.it"
@@ -30,6 +30,42 @@ class FanMode(StrEnum):
     outward = "2"
     alternate = "3"
     sensor = "4"
+
+
+# `speed_state` bit flags. The running speed itself sits in the low three bits.
+SPEED_FLAG_PROFILED = 0x10  # speed comes from the weekly program or the sensors
+SPEED_FLAG_ADVANCED = 0x20  # an advanced threshold is engaged: run one step faster
+SPEED_FLAG_BOOST = 0x40
+SPEED_FLAG_NIGHT = 0x80
+SPEED_VALUE_MASK = 0x07
+
+# `mode_state` carries the airflow direction in its low nibble.
+MODE_DIRECTION_MASK = 0x0F
+
+
+class FanSpeedState(IntEnum):
+    """Actual running speed, decoded from the `speed_state` bitfield.
+
+    Distinct from `FanSpeed`, which holds setpoints in the device's own encoding:
+    a device set to `FanSpeed.auto` still reports a concrete speed here.
+    """
+
+    off = 0
+    sleep = 1
+    speed1 = 2
+    speed2 = 3
+    speed3 = 4
+    boost = 5
+
+
+class FanPreset(StrEnum):
+    """What is currently driving the fan."""
+
+    off = "off"
+    sleep = "sleep"
+    manual = "manual"
+    program = "program"
+    auto = "auto"
 
 
 class Season(StrEnum):

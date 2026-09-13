@@ -52,28 +52,18 @@ def test_create_mode_speed_command_even_sn():
     assert len(cmd) % 2 == 0
 
 
-def test_create_mode_speed_command_odd_sn():
-    """Odd-length SN (7 chars, one short of the standard 8) must not raise."""
-    # Before the zero-padding fix this raised binascii.Error: Odd-length string
-    cmd = create_mode_speed_command("1234567", FanMode.inward, FanSpeed.low)
-    assert cmd == cmd.upper()
-    assert len(cmd) % 2 == 0
+def test_create_mode_speed_command_rejects_non_standard_sn():
+    """A serial that is not four bytes cannot be encoded into the frame.
 
-
-def test_create_mode_speed_command_odd_sn_equals_zero_padded():
-    """An odd-length SN is padded with a leading zero, giving the same command as the
-    explicitly zero-padded version."""
-    assert create_mode_speed_command(
-        "1234567", FanMode.inward, FanSpeed.low
-    ) == create_mode_speed_command("01234567", FanMode.inward, FanSpeed.low)
-
-
-def test_create_mode_speed_command_even_sn_padding_is_noop():
-    """For even-length SNs, no leading zero is added (padded_sn == device_sn).
-
-    Verified by intercepting the argument passed to hex_to_bytes: it must start
-    with '0A' + device_sn unchanged, not '0A0' + device_sn.
+    The length field is hardcoded for an eight-character serial, so padding a short one
+    would produce a frame the device misreads. Failing here is the safe outcome.
     """
+    with pytest.raises(binascii.Error):
+        create_mode_speed_command("1234567", FanMode.inward, FanSpeed.low)
+
+
+def test_create_mode_speed_command_embeds_the_sn_verbatim():
+    """The serial reaches the frame unchanged, as the vendor app sends it."""
     received: list[str] = []
 
     with patch(
@@ -83,7 +73,6 @@ def test_create_mode_speed_command_even_sn_padding_is_noop():
         create_mode_speed_command(SN, FanMode.inward, FanSpeed.low)
 
     assert received[0].startswith("0A" + SN)
-    assert not received[0].startswith("0A0" + SN)
 
 
 def test_create_mode_speed_command_frame_structure():
@@ -136,14 +125,12 @@ def test_create_mode_speed_command_crc_changes_with_content():
 @pytest.mark.parametrize(
     "sn",
     [
-        "AABBCCDD",  # 8-char SN (even), the standard case
-        "AABBCCD",  # 7-char SN (odd), padded to 8
-        "12345678",  # 8-char SN (even), all numbers
-        "1234567",  # 7-char SN (odd), padded to 8
+        "AABBCCDD",  # the standard case
+        "12345678",  # all numbers
     ],
 )
 def test_create_mode_speed_command_standard_sn_lengths(sn: str):
-    """Standard (8-char) and near-standard (7-char) SNs both produce a 32-char command."""
+    """A standard eight-character serial produces a 32-char command."""
     cmd = create_mode_speed_command(sn, FanMode.inward, FanSpeed.medium)
     assert len(cmd) == 32
     data = _decode(cmd)

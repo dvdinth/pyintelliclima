@@ -133,6 +133,12 @@ def checksum_crc8_nrsc5(
     return crc
 
 
+# Every `create_*_command` below embeds `device_sn` verbatim, as the vendor app does. The
+# serial is a four-byte value the device reports as eight hex characters, and each frame's
+# hardcoded length field assumes exactly that - so anything else has to fail loudly in
+# `hex_to_bytes` rather than be padded into a frame the device would misread.
+
+
 def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) -> str:
     """Creates the api request command that sets mode and speed for a certain device."""
     LOGGER.debug(
@@ -141,9 +147,7 @@ def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) ->
         mode,
         speed,
     )
-    # unhexlify requires an even-length string (2 hex chars per byte)
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
-    partial_command = "0A" + padded_sn + "000E2F00500000" + f"{int(mode):02X}" + f"{int(speed):02X}"
+    partial_command = "0A" + device_sn + "000E2F00500000" + f"{int(mode):02X}" + f"{int(speed):02X}"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)  # Placeholder for checksum
     base_data.append(0x0D)  # Termination byte
@@ -160,10 +164,9 @@ def create_offsets_command(device_sn: str, temperature_offset: float, humidity_o
     Both offsets share the same device register, so both must be sent together - pass the
     device's current value for whichever offset isn't being changed.
     """
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
     temp_raw = round(temperature_offset * 100) & 0xFFFF
     hum_raw = round(humidity_offset * 100) & 0xFFFF
-    partial_command = "0A" + padded_sn + "00102F00210000" + f"{temp_raw:04X}" + f"{hum_raw:04X}"
+    partial_command = "0A" + device_sn + "00102F00210000" + f"{temp_raw:04X}" + f"{hum_raw:04X}"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)  # Placeholder for checksum
     base_data.append(0x0D)  # Termination byte
@@ -203,7 +206,6 @@ def create_advanced_settings_command(
         value = int(level)
         return value + 0x80 if advanced and value else value
 
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
     rh_byte = threshold_byte(humidity_threshold, humidity_threshold_advanced)
     lux_byte = threshold_byte(lux_threshold, advanced=False)
     voc_byte = threshold_byte(voc_threshold, voc_threshold_advanced)
@@ -211,7 +213,7 @@ def create_advanced_settings_command(
 
     partial_command = (
         "0A"
-        + padded_sn
+        + device_sn
         + "00182F00200000"
         + "7F"
         + f"{rh_byte:02X}"
@@ -242,12 +244,11 @@ def create_season_free_cooling_command(
     The two values occupy one nibble each. A value left as ``None`` is encoded
     with the vendor app's preserve marker for that nibble.
     """
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
     season_nibble = "7" if season is None else f"{int(season):X}"
     free_cooling_nibble = "F" if free_cooling is None else f"{int(free_cooling):X}"
     partial_command = (
         "0A"
-        + padded_sn
+        + device_sn
         + "00182F00200000"
         + "7F7F7F7F"
         + season_nibble
@@ -268,8 +269,7 @@ def create_filter_reset_command(device_sn: str) -> str:
     Unlike the settings writes this frame carries a bare two-byte `objID` with no
     padding and the dedicated `0x26` action byte instead of the generic `0x2F` write.
     """
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
-    partial_command = "0A" + padded_sn + "001026" + "001A" + "001A00000000"
+    partial_command = "0A" + device_sn + "001026" + "001A" + "001A00000000"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)
     base_data.append(0x0D)

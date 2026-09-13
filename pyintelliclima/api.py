@@ -80,6 +80,21 @@ async def post_to_session(
     return response
 
 
+def _load_json_field(value: Any) -> Any:
+    """Expand a response field the server nests as a JSON string.
+
+    Any of these fields can come back as JSON `null` - the vendor app guards every one
+    of them with its own `ifNullJSON` - so a value that is not parsable JSON text is
+    handed back untouched rather than raising and costing the caller its whole device.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
 def create_request_token() -> str:
     """Build the `TOKEN` header the vendor app sends on unauthenticated requests.
 
@@ -635,17 +650,10 @@ class IntelliClimaAPI:
         rather than mis-parsing it: RHINOCOMFORT 3 in particular shares enough of this
         schema that dacite would otherwise accept it as an ECOCOMFORT 2.0.
         """
-        # 'model' and 'config' arrive as JSON strings and have to be expanded before
-        # dacite sees them.
-        try:
-            device_data["model"] = json.loads(device_data.get("model", "{}"))
-        except (KeyError, json.JSONDecodeError):
-            device_data["model"] = device_data.get("model")
-
-        try:
-            device_data["config"] = json.loads(device_data.get("config", "{}"))
-        except (KeyError, json.JSONDecodeError):
-            device_data["config"] = device_data.get("config")
+        # 'model' arrives as a JSON string and has to be expanded before dacite sees it.
+        # The sibling 'config' is deliberately left alone: no VMC dataclass has that
+        # field, and the vendor app never reads it for an ECOCOMFORT either.
+        device_data["model"] = _load_json_field(device_data.get("model"))
 
         # These are the last commanded setpoints, not the running state - use
         # decode_fan_state() on mode_state/speed_state for that.

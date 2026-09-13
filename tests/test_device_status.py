@@ -167,6 +167,25 @@ async def test_get_all_device_status_requests_eco2_and_eco3_together(mock_post):
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
+async def test_get_all_device_status_tolerates_null_nested_json(mock_post):
+    # The server can send these nested fields as JSON null; losing the whole device over
+    # one of them would cost every sensor reading on it.
+    api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
+    api.ecocomfort3_ids = ["30"]
+
+    fixture_path = Path(__file__).parent / "fixtures" / "ecocomfort3_status.json"
+    device = dict(json.loads(fixture_path.read_text())["data"][0])
+    device["config"] = None
+    device["pcustom"] = None
+    mock_post.return_value = {"status": "OK", "data": [device]}
+
+    devices = await api.get_all_device_status()
+
+    assert devices.num_devices == 1
+    assert devices.ecocomfort3_devices["30"].fan_state.direction is FanMode.sensor
+
+
+@patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_get_all_device_status_skips_other_device_families(mock_post, caplog):
     # A RHINOCOMFORT 3 shares enough of this schema that dacite would accept it as an
     # ECOCOMFORT 2.0, so the model check has to reject it rather than the field parsing.

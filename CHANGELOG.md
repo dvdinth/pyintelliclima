@@ -16,6 +16,8 @@ not hardcoded in this repo.
 - `IntelliClimaECO3` model and `IntelliClimaDevices.ecocomfort3_devices` collection.
 - ECOCOMFORT 3 status parsing populates the existing `voc_state`, `co2`, `aqi`, and
   `co2_thrs` fields.
+- ECOCOMFORT 3 setters for temperature/humidity calibration, sensor thresholds, season,
+  and free-cooling level.
 
 ## [0.4.1] - 2026-08-04
 

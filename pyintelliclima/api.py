@@ -439,6 +439,10 @@ class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
 
         These fields share the same device register: any field left as `None` is
         preserved unchanged, so only pass the field(s) you actually want to change.
+        Read a field's current value back through `decode_threshold` before resending
+        it: the raw register carries the "advanced" flag in bit 7, so sending it
+        unchanged as a level would turn a level of 1-3 into an out-of-range value, and
+        sending the level alone would clear a flag the user had set.
 
         On a satellite unit this also clears `slv_addr` - see
         `create_advanced_settings_command`.
@@ -487,8 +491,9 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
     ) -> bool:
         """Set ECOCOMFORT 3 sensor thresholds and/or satellite rotation.
 
-        Any field left as `None` is preserved unchanged. On a satellite unit this also
-        clears `slv_addr` - see `create_advanced_settings_command`.
+        Any field left as `None` is preserved unchanged, and a field being resent should
+        come from `decode_threshold` rather than from the raw register. On a satellite
+        unit this also clears `slv_addr` - see `create_advanced_settings_command`.
         """
         return await self._set_advanced_settings(
             device_sn,

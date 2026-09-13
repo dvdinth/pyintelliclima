@@ -57,6 +57,31 @@ For a Home Assistant sensor, both with `UnitOfRatio.PARTS_PER_MILLION`:
 The ECOCOMFORT 3 eCO2 figure is VOC-derived rather than an NDIR measurement, so it responds to
 solvents and cooking as well as to occupancy.
 
+### Reading the sensor-mode thresholds
+
+`rh_thrs` and `voc_thrs`/`co2_thrs` are not plain levels: the level sits in the low bits and the
+"advanced control" flag in bit 7, so a threshold with that flag on reads back as `129`-`131`.
+Read the decoded properties instead, each `None` when the device reports no value:
+
+| Property | Register | Type |
+| --- | --- | --- |
+| `device.humidity_threshold` | `rh_thrs` | `ThresholdSetting` |
+| `device.voc_threshold` (ECOCOMFORT 2.0 only) | `voc_thrs` | `ThresholdSetting` |
+| `device.co2_threshold` (ECOCOMFORT 3 only) | `co2_thrs` | `ThresholdSetting` |
+| `device.luminosity_threshold` | `lux_thrs` | `ThresholdLevel` |
+
+A `ThresholdSetting` is a `level` plus an `advanced` flag. Luminosity is a bare level - it is the
+one threshold with no advanced-control option on either generation.
+
+The flag matters most on a write. The thresholds and the satellite rotation share one device
+register, so changing one means resending the others - and resending a raw register as a level is
+out of range, while resending the level alone clears a flag the user set in the app. Note this is
+not `FanState.advanced`, which is a different bit reporting that an armed threshold is engaging
+right now.
+
+Note that threshold writes were not observed to persist reliably - see
+`IntelliClimaEcocomfort2API.set_advanced_settings`.
+
 ### Reading the current mode and speed
 
 `mode_set` and `speed_set` hold the last *commanded* values, which is not necessarily what the

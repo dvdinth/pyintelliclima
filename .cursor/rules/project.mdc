@@ -34,13 +34,19 @@ The library has four modules under `pyintelliclima/`:
 - **`const.py`**: API base URL, endpoint constants, `REFRESH_DELAY` (5s sleep after commands), and
   the protocol enums. `FanMode`/`FanSpeed` are *setpoints*, with string values that are the register
   byte in decimal. `FanSpeedState`/`FanPreset` plus the `SPEED_FLAG_*` masks describe the *reported*
-  running state, which is a different encoding.
+  running state, which is a different encoding. `ThresholdLevel` is likewise a setpoint: the
+  reported threshold registers add the `THRESHOLD_FLAG_ADVANCED` bit on top of it.
 - **`intelliclima_types.py`**: Dataclasses for all request/response types. `IntelliClimaVMCBase`
   holds the status fields shared by the VMC family; `IntelliClimaECO2` and `IntelliClimaECO3` are
-  empty siblings on it, so `isinstance` is exact in both directions. `IntelliClimaC800` exists but is
+  siblings on it rather than one subclassing the other, so `isinstance` is exact in both
+  directions. They carry only what genuinely differs per generation - `voc_threshold` and
+  `co2_threshold` - since dacite needs one shared field list but only one of those two columns
+  is ever populated. `IntelliClimaC800` exists but is
   unverified and not implemented. `IntelliClimaDevices` is the container returned from device
   polling. `decode_fan_state()` turns the reported `mode_state`/`speed_state` registers into a
-  `FanState`.
+  `FanState`, and `decode_threshold()` turns a reported `*_thrs` register into a
+  `ThresholdSetting`. Both are exposed as properties on `IntelliClimaVMCBase`; prefer those over
+  the raw fields, and decode before resending a threshold in a partial write.
 - **`api.py`**: The client classes plus low-level helpers:
   - `IntelliClimaAPI`: Top-level client. Handles auth (SHA-256 password hash), fetches house/device
     IDs, and polls all device statuses. Owns `ecocomfort2` and `ecocomfort3` sub-clients.

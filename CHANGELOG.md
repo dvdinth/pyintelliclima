@@ -39,6 +39,13 @@ an ECOCOMFORT 2.0.
   `FreeCoolingLevel`, `ThresholdLevel`, `SatelliteRotation`) and `IntelliClimaFilterStatus` are
   exported from the package root. They are argument and return types of the public client
   methods, so importing them from `pyintelliclima.const` was an avoidable detour.
+- `decode_threshold()` and `ThresholdSetting`, plus `humidity_threshold` and
+  `luminosity_threshold` on `IntelliClimaVMCBase`, `voc_threshold` on `IntelliClimaECO2` and
+  `co2_threshold` on `IntelliClimaECO3`. `rh_thrs`, `voc_thrs` and `co2_thrs` carry the "advanced
+  control" flag in bit 7 on top of the level, so a threshold with that flag on read back as
+  `129`-`131` and was not a valid `ThresholdLevel` at all. The library already encoded that bit
+  on write; decoding it on read is what makes a partial write to the shared threshold register
+  safe. `lux_thrs` has no such flag on either generation and stays a bare `ThresholdLevel`.
 
 ### Changed
 

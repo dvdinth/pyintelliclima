@@ -98,3 +98,9 @@ class ThresholdLevel(StrEnum):
     low = "1"
     medium = "2"
     high = "3"
+
+
+# `rh_thrs`/`voc_thrs`/`co2_thrs` carry the level in their low bits and "advanced control"
+# in bit 7. Unlike `SPEED_FLAG_ADVANCED` this only says the feature is armed, not engaging.
+THRESHOLD_FLAG_ADVANCED = 0x80
+THRESHOLD_VALUE_MASK = 0x7F

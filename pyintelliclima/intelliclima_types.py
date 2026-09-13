@@ -11,10 +11,13 @@ from pyintelliclima.const import (
     SPEED_FLAG_NIGHT,
     SPEED_FLAG_PROFILED,
     SPEED_VALUE_MASK,
+    THRESHOLD_FLAG_ADVANCED,
+    THRESHOLD_VALUE_MASK,
     FanMode,
     FanPreset,
     FanSpeed,
     FanSpeedState,
+    ThresholdLevel,
 )
 
 # ruff: noqa: N815
@@ -211,6 +214,35 @@ def decode_fan_state(mode_state: str, speed_state: str) -> FanState:
     )
 
 
+@dataclass(frozen=True)
+class ThresholdSetting:
+    """A sensor-mode threshold register, split into its level and its advanced flag."""
+
+    level: ThresholdLevel
+    advanced: bool
+
+
+def decode_threshold(raw: str) -> ThresholdSetting:
+    """Split a reported `rh_thrs`/`voc_thrs`/`co2_thrs` register into level and flag.
+
+    The raw register is not a `ThresholdLevel` whenever the flag is on, so decode it
+    before comparing it or resending it - see `set_advanced_settings` for why a partial
+    write has to resend the others. Raises `ValueError` on an undefined level.
+    """
+    value = int(raw)
+    level = ThresholdLevel(str(value & THRESHOLD_VALUE_MASK))
+    # A level of zero never gets the flag written to it, so a bare 0x80 is plain "off".
+    # The vendor app decodes with `> 128` rather than `>= 128` for the same reason.
+    advanced = bool(value & THRESHOLD_FLAG_ADVANCED) and level is not ThresholdLevel.off
+    return ThresholdSetting(level=level, advanced=advanced)
+
+
+def _decode_threshold(raw: str | None) -> ThresholdSetting | None:
+    if raw is None or not raw.strip():
+        return None
+    return decode_threshold(raw)
+
+
 @dataclass
 class IntelliClimaVMCBase:
     """Status fields common to the ECOCOMFORT VMC family."""
@@ -307,15 +339,44 @@ class IntelliClimaVMCBase:
         """
         return decode_fan_state(self.mode_state, self.speed_state)
 
+    @property
+    def humidity_threshold(self) -> ThresholdSetting | None:
+        """`None` if the device reports no value for this sensor."""
+        return _decode_threshold(self.rh_thrs)
+
+    @property
+    def luminosity_threshold(self) -> ThresholdLevel | None:
+        """A bare level: this is the one threshold with no advanced-control option.
+
+        The register is deliberately not masked, so a flag bit turning up here raises
+        rather than being read as a level.
+        """
+        if not self.lux_thrs.strip():
+            return None
+        return ThresholdLevel(str(int(self.lux_thrs)))
+
+
+# dacite builds both generations off one shared field list, so `voc_thrs` and `co2_thrs`
+# both sit on the base - but each device populates only its own, leaving the other null.
+# The decoded property therefore lives on the generation that has it.
+
 
 @dataclass
 class IntelliClimaECO2(IntelliClimaVMCBase):
     """Status data returned by an ECOCOMFORT 2.0 device."""
 
+    @property
+    def voc_threshold(self) -> ThresholdSetting | None:
+        return _decode_threshold(self.voc_thrs)
+
 
 @dataclass
 class IntelliClimaECO3(IntelliClimaVMCBase):
     """Status data returned by an ECOCOMFORT 3 device."""
+
+    @property
+    def co2_threshold(self) -> ThresholdSetting | None:
+        return _decode_threshold(self.co2_thrs)
 
 
 @dataclass

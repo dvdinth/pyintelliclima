@@ -24,19 +24,28 @@ device(s), or share the logs as described so I can add them.
 
 This API was made by reverse engineering the cloud API, through the use of an android emulator and proxy to catch the Intelliclima+ app traffic. As such, no public API exists and the functionality of this module breaks if the API changes. This module is provided as-is, with no guarantees of correctness, stability, or continued functionality. Use it at your own risk.
 
-### ECOCOMFORT 3 air-quality values
+### Air-quality values
 
-ECOCOMFORT 3 status responses populate the existing `voc_state`, `co2`, `aqi`, and `co2_thrs`
-fields. All values are returned as strings.
+Read air quality from `voc_state` on both generations. It carries a different quantity on each,
+so it needs a different device class:
 
-`voc_state` carries the **eCO2 estimate in ppm**, despite the field name. The device manual
-describes the sensor as measuring eCO2, with air-quality thresholds at 500/750/1000 ppm, and a
-device owner confirmed that `voc_state` matches the value the vendor app charts as CO2. It is a
-VOC-derived estimate anchored to a 400 ppm baseline, not an NDIR measurement, so it responds to
+| Field | ECOCOMFORT 2.0 | ECOCOMFORT 3 |
+| --- | --- | --- |
+| `voc_state` | VOC, ppm | eCO2, ppm |
+| `co2` | no sensor | unreliable - do not use |
+| `aqi` | no sensor | air-quality index, 1-5 |
+| threshold field | `voc_thrs` | `co2_thrs` |
+
+For a Home Assistant sensor, both with `UnitOfRatio.PARTS_PER_MILLION`:
+
+- ECOCOMFORT 2.0 - `SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS`
+- ECOCOMFORT 3 - `SensorDeviceClass.CO2`
+
+The ECOCOMFORT 3 eCO2 figure is VOC-derived rather than an NDIR measurement, so it responds to
 solvents and cooking as well as to occupancy.
 
-`co2` is the odd one out: field observations found physically implausible values there. Treat it
-as unverified raw data.
+All values are returned as strings. `65535` in `voc_state` or `co2`, and `143` in `aqi`, mean "no
+reading" - report those as unavailable.
 
 ### Reading the current mode and speed
 

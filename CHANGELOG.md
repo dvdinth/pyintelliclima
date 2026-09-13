@@ -67,8 +67,10 @@ an ECOCOMFORT 2.0.
   the Home Assistant guidance against master/slave terminology. "Satellite unit" is the vendor
   app's own English wording for these devices. The `role`, `slv_rot` and `slv_addr` status fields
   keep their names: they are the server's JSON keys, which dacite matches verbatim.
-- README: `voc_state` is the eCO2 estimate in ppm, confirmed against the device manual and a
-  device owner's measurement. `co2` remains unverified.
+- README: the air-quality fields are now documented per generation. `voc_state` is the field to
+  read on both, but carries VOC in ppm on ECOCOMFORT 2.0 and an eCO2 estimate in ppm on
+  ECOCOMFORT 3, so each needs its own Home Assistant device class. `co2` and `aqi` exist only on
+  ECOCOMFORT 3; `co2` disagrees with a reference NDIR monitor and should not be used.
 
 ### Fixed
 

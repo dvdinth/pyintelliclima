@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyintelliclima.api import IntelliClimaAPI
+from pyintelliclima.api import IntelliClimaAPI, IntelliClimaAPIError
 
 pytestmark = pytest.mark.asyncio
 
@@ -83,7 +83,7 @@ async def test_set_house_and_device_ids_logs_devices_of_other_families(mock_post
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
-async def test_set_house_and_device_ids_handles_missing_id_arrays(mock_post, caplog):
+async def test_set_house_and_device_ids_handles_missing_id_arrays(mock_post):
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
     api.user_id = "user-id"
 
@@ -93,16 +93,16 @@ async def test_set_house_and_device_ids_handles_missing_id_arrays(mock_post, cap
 
     assert api.ecocomfort2_ids == []
     assert api.ecocomfort3_ids == []
-    assert "Error while getting houses" not in caplog.text
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
-async def test_set_house_and_device_ids_logs_error(mock_post, caplog):
+async def test_set_house_and_device_ids_propagates_errors(mock_post):
+    # A swallowed failure would leave the ID lists empty, which reads exactly like an
+    # account with no supported devices.
     api = IntelliClimaAPI(MagicMock(), username="user", password="pass")
     api.user_id = "user-id"
 
-    mock_post.side_effect = RuntimeError("boom")
+    mock_post.side_effect = IntelliClimaAPIError("boom")
 
-    await api.set_house_and_device_ids()
-
-    assert "Error while getting houses for user: user-id" in caplog.text
+    with pytest.raises(IntelliClimaAPIError):
+        await api.set_house_and_device_ids()

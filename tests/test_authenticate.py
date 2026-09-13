@@ -116,3 +116,16 @@ async def test_authenticate_client_error_wrapped(mock_post):
 
     with pytest.raises(IntelliClimaAuthError):
         await api.authenticate()
+
+
+@patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
+@patch.object(IntelliClimaAPI, "set_house_and_device_ids", new_callable=AsyncMock)
+async def test_authenticate_discovery_failure_is_not_an_auth_error(mock_set_house_devices, mock_post):
+    # The credentials were already accepted, so a failing device lookup must not be
+    # reported as a credential problem.
+    api = _make_api()
+    mock_post.return_value = {"status": "OK", "token": "token123", "id": "user-id"}
+    mock_set_house_devices.side_effect = ClientError("boom")
+
+    with pytest.raises(ClientError):
+        await api.authenticate()

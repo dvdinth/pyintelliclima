@@ -590,14 +590,14 @@ class IntelliClimaAPI:
                 }
             )
 
-            await self.set_house_and_device_ids()
-
         except ClientError as err:
             LOGGER.error("Authentication failed: %s", err)
             raise IntelliClimaAuthError(f"Authentication failed: {err}") from err
 
-        else:
-            return True
+        # Outside the handler above: the credentials are already accepted by this point,
+        # so a discovery failure is a transport or server problem, not an auth one.
+        await self.set_house_and_device_ids()
+        return True
 
     async def set_all_token_headers(self, token_headers: dict[str, Any]) -> None:
         """Sets main API token headers and child device API token headers."""
@@ -699,31 +699,31 @@ class IntelliClimaAPI:
         would serve the same purpose, but no vendor code ever touches it.
         """
 
-        try:
-            LOGGER.info(f"Obtaining IntelliClima house & devices for user: {self.user_id}")
+        LOGGER.info("Obtaining IntelliClima house & devices for user: %s", self.user_id)
 
-            response = await post_to_session(
-                self._session,
-                f"casa/elenco3/{self.user_id}",
-                headers=self._token_headers,
-            )
+        # Deliberately not caught: a failed discovery leaves every ID list empty, which
+        # is indistinguishable from an account that genuinely owns no supported device.
+        # The caller has to be able to tell those apart.
+        response = await post_to_session(
+            self._session,
+            f"casa/elenco3/{self.user_id}",
+            headers=self._token_headers,
+        )
 
-            houses = response.get("houses", {})
-            self.house_ids = list(houses.keys())
-            self.ecocomfort2_ids = [str(device_id) for device_id in response.get("ecoIDs", [])]
-            self.ecocomfort3_ids = [str(device_id) for device_id in response.get("eco3IDs", [])]
+        houses = response.get("houses", {})
+        self.house_ids = list(houses.keys())
+        self.ecocomfort2_ids = [str(device_id) for device_id in response.get("ecoIDs", [])]
+        self.ecocomfort3_ids = [str(device_id) for device_id in response.get("eco3IDs", [])]
 
-            # Everything else on the account is a device family this library does not
-            # implement - boiler controllers, RHINOCOMFORT units. Logged so an owner
-            # asking why their device is missing gets an answer.
-            supported = set(self.ecocomfort2_ids) | set(self.ecocomfort3_ids)
-            skipped = [
-                str(device.get("id"))
-                for house_id in self.house_ids
-                for device in houses[house_id]
-                if str(device.get("id")) not in supported
-            ]
-            if skipped:
-                LOGGER.info("Ignoring unsupported IntelliClima devices: %s", ", ".join(skipped))
-        except Exception as e:  # noqa: BLE001
-            LOGGER.error(f"Error while getting houses for user: {self.user_id}: {e}")
+        # Everything else on the account is a device family this library does not
+        # implement - boiler controllers, RHINOCOMFORT units. Logged so an owner
+        # asking why their device is missing gets an answer.
+        supported = set(self.ecocomfort2_ids) | set(self.ecocomfort3_ids)
+        skipped = [
+            str(device.get("id"))
+            for house_id in self.house_ids
+            for device in houses[house_id]
+            if str(device.get("id")) not in supported
+        ]
+        if skipped:
+            LOGGER.info("Ignoring unsupported IntelliClima devices: %s", ", ".join(skipped))

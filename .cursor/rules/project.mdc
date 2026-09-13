@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## About This Project
 
-`pyintelliclima` is a Python library for communicating with IntelliClima ECOCOMFORT 2.0 ventilation
-devices via their proprietary cloud API. The API was reverse-engineered from the IntelliClima+ Android
-app — there is no public API, so the library may break if IntelliClima changes their server.
+`pyintelliclima` is a Python library for communicating with IntelliClima ECOCOMFORT 2.0 and
+ECOCOMFORT 3 ventilation devices via their proprietary cloud API. The API was reverse-engineered
+from the IntelliClima+ Android app — there is no public API, so the library may break if
+IntelliClima changes their server.
 
 The primary intended use is as a dependency for a Home Assistant integration.
 
@@ -30,30 +31,42 @@ To add project-specific content that survives regeneration, edit `.cursor/rules/
 
 The library has four modules under `pyintelliclima/`:
 
-- **`const.py`**: API base URL, endpoint constants, `REFRESH_DELAY` (5s sleep after commands),
-  and `FanMode`/`FanSpeed` StrEnums with string values matching the wire protocol.
-- **`intelliclima_types.py`**: Dataclasses for all request/response types. `IntelliClimaECO` is the
-  primary device status type; `IntelliClimaC800` exists but is unverified and not implemented.
-  `IntelliClimaDevices` is the container returned from device polling.
-- **`api.py`**: Two client classes plus low-level helpers:
+- **`const.py`**: API base URL, endpoint constants, `REFRESH_DELAY` (5s sleep after commands), and
+  the protocol enums. `FanMode`/`FanSpeed` are *setpoints*, with string values that are the register
+  byte in decimal. `FanSpeedState`/`FanPreset` plus the `SPEED_FLAG_*` masks describe the *reported*
+  running state, which is a different encoding.
+- **`intelliclima_types.py`**: Dataclasses for all request/response types. `IntelliClimaVMCBase`
+  holds the status fields shared by the VMC family; `IntelliClimaECO2` and `IntelliClimaECO3` are
+  empty siblings on it, so `isinstance` is exact in both directions. `IntelliClimaC800` exists but is
+  unverified and not implemented. `IntelliClimaDevices` is the container returned from device
+  polling. `decode_fan_state()` turns the reported `mode_state`/`speed_state` registers into a
+  `FanState`.
+- **`api.py`**: The client classes plus low-level helpers:
   - `IntelliClimaAPI`: Top-level client. Handles auth (SHA-256 password hash), fetches house/device
-    IDs, and polls all device statuses. Owns an `IntelliClimaEcocomfortAPI` sub-client.
-  - `IntelliClimaEcocomfortAPI`: Controls ECOCOMFORT 2.0 devices. Sends binary commands encoded as
-    hex strings with CRC8-NRSC5 checksums to `eco/send/`. After each command it sleeps `REFRESH_DELAY`
-    seconds to let the device update before the next status poll.
-  - `create_mode_speed_command()`: Builds the binary command frame for mode+speed. The frame format
-    was reverse-engineered; the CRC polynomial is 0x31, init 0xFF.
+    IDs, and polls all device statuses. Owns `ecocomfort2` and `ecocomfort3` sub-clients.
+  - `_IntelliClimaVMCAPI`: Shared base for both VMC generations. They speak the same command
+    protocol over identically named endpoints, so the concrete classes differ only in
+    `_endpoint_prefix` (`eco` vs `eco3`). After each command it sleeps `REFRESH_DELAY` seconds to
+    let the device update before the next status poll.
+  - `IntelliClimaEcocomfort2API` / `IntelliClimaEcocomfort3API`: the two concrete clients.
+  - `create_mode_speed_command()` and friends: Build the binary command frames, encoded as hex
+    strings with CRC8-NRSC5 checksums. The frame format was reverse-engineered; the CRC polynomial
+    is 0x31, init 0xFF. `tests/test_vendor_frames.py` checks them against a port of the vendor
+    app's own builders.
 - **`__init__.py`**: Public exports.
 
 ## Key API Details
 
 - Auth: POST to `user/login/{username}/{sha256_password}` with a device registration JSON body.
   Returns `token` and `id` used as `TOKEN`/`TOKENID` headers on all subsequent requests.
-- Device discovery: POST to `casa/elenco3/{user_id}`. Device type `"ECO"` = ECOCOMFORT 2.0;
-  `"CH"` devices are filtered out (boiler controllers, not implemented).
+- Device discovery: POST to `casa/elenco3/{user_id}`. Device type `"ECO"` = ECOCOMFORT 2.0,
+  `"ECO3"` = ECOCOMFORT 3; `"CH"` devices are filtered out (boiler controllers, not implemented).
+  Any other type is logged and skipped.
 - Status polling: POST to `sync/cronos400` with a list of device IDs. Response `data[]` items have
   `model` and `config` fields that are JSON strings and must be parsed before passing to `dacite`.
-- Commands: POST to `eco/send/` with `{"trama": "<hex command string>"}`.
+- Commands: POST to `eco/send/` (or `eco3/send/`) with `{"trama": "<hex command string>"}`.
+- `mode_set`/`speed_set` are the last *commanded* values and are not what the unit is doing. The
+  vendor app displays `mode_state`/`speed_state` instead; use `decode_fan_state()` for those.
 
 ## Dependencies
 

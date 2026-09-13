@@ -15,8 +15,9 @@ This is a Python module for communicating with IntelliClima ECOCOMFORT 2.0 and
 ECOCOMFORT 3 devices.
 Its main use is for my corresponding [HomeAssistant IntelliClima integration](https://www.home-assistant.io/integrations/intelliclima/).
 
-It can be extended to include other devices from IntelliClima in the future, but I only own the 
-ECOCOMFORT 2.0, so I cannot add any others without help from device owners. I've made a
+ECOCOMFORT 3 support is community-contributed and is not tested by me - I own only the
+ECOCOMFORT 2.0. It can be extended to include other devices from IntelliClima in the future,
+but not without help from device owners. I've made a
 [guide for adding new devices](ADD_DEVICE_GUIDE.md). If you own another device type, it's
 highly appreciated if you could take a look at the guide and see if you can add a PR for your
 device(s), or share the logs as described so I can add them.
@@ -26,16 +27,32 @@ This API was made by reverse engineering the cloud API, through the use of an an
 ### ECOCOMFORT 3 air-quality values
 
 ECOCOMFORT 3 status responses populate the existing `voc_state`, `co2`, `aqi`, and `co2_thrs`
-fields. All values are returned as strings. Their exact sensor semantics have not yet been
-verified: field observations found physically implausible `co2` values, while `voc_state` has a
-400-unit floor characteristic of a VOC-derived eCO2 estimate. Consumers should therefore expose
-these fields as unverified raw data rather than dependable VOC or CO2 measurements.
+fields. All values are returned as strings.
+
+`voc_state` carries the **eCO2 estimate in ppm**, despite the field name. The device manual
+describes the sensor as measuring eCO2, with air-quality thresholds at 500/750/1000 ppm, and a
+device owner confirmed that `voc_state` matches the value the vendor app charts as CO2. It is a
+VOC-derived estimate anchored to a 400 ppm baseline, not an NDIR measurement, so it responds to
+solvents and cooking as well as to occupancy.
+
+`co2` is the odd one out: field observations found physically implausible values there. Treat it
+as unverified raw data.
+
+### Reading the current mode and speed
+
+`mode_set` and `speed_set` hold the last *commanded* values, which is not necessarily what the
+unit is doing - the vendor app never displays them. Pass the reported `mode_state` and
+`speed_state` registers to `decode_fan_state()` instead, which returns the running direction,
+speed, preset, and the boost/night/profiled/advanced flags.
 
 ## Credits
 
 This was highly inspired by: https://github.com/ruizmarc/homebridge-intelliclima
 
 Partial credit for the reverse engineering process of the API goes to them.
+
+ECOCOMFORT 3 support, and the observation that the IntelliClima+ app ships as plain JavaScript
+and can therefore be read directly, are thanks to [@rbressers](https://github.com/rbressers).
 
 * * *
 

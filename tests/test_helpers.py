@@ -112,14 +112,12 @@ def test_create_mode_speed_command_mode_speed_bytes():
 
 
 def test_create_mode_speed_command_auto_speed_encoding():
-    """FanSpeed.auto_set='10' encodes to byte 0x10.
+    """FanSpeed.auto='16' encodes to byte 0x10.
 
-    The enum value '10' is the hex representation of the protocol byte, not a decimal
-    integer. f"{int('10'):02d}" == "10" == the intended hex string, so byte 0x10 is
-    sent. If the protocol instead used decimal 10 (0x0A) this would be a bug, but
-    current behaviour matches the expected wire value.
+    Enum values are the protocol byte in decimal, matching what the device reports
+    back in `speed_set`, and the command builder formats them as hex.
     """
-    cmd = create_mode_speed_command(SN, FanMode.sensor, FanSpeed.auto_set)
+    cmd = create_mode_speed_command(SN, FanMode.sensor, FanSpeed.auto)
     data = _decode(cmd)
     assert data[13] == 0x10
 

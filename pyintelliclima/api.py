@@ -92,7 +92,7 @@ def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) ->
     )
     # unhexlify requires an even-length string (2 hex chars per byte)
     padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
-    partial_command = "0A" + padded_sn + "000E2F00500000" + f"{int(mode):02d}" + f"{int(speed):02d}"
+    partial_command = "0A" + padded_sn + "000E2F00500000" + f"{int(mode):02X}" + f"{int(speed):02X}"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)  # Placeholder for checksum
     base_data.append(0x0D)  # Termination byte
@@ -275,7 +275,7 @@ class _IntelliClimaVMCAPI:
 
     async def set_mode_speed_auto(self, device_sn: str) -> bool:
         """Set the auto preset mode and speed."""
-        return await self.set_mode_speed(device_sn, mode=FanMode.sensor, speed=FanSpeed.auto_set)
+        return await self.set_mode_speed(device_sn, mode=FanMode.sensor, speed=FanSpeed.auto)
 
     async def set_temperature_and_humidity_offsets(
         self, device_sn: str, temperature_offset: float, humidity_offset: int

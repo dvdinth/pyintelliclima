@@ -49,7 +49,7 @@ def app_crea_trama(serial: str, obj_id: str, dati: str, tipo: str) -> str:
 
 
 def test_mode_speed_command_matches_vendor_app():
-    assert create_mode_speed_command(SERIAL, FanMode.sensor, FanSpeed.auto_set) == app_crea_trama(
+    assert create_mode_speed_command(SERIAL, FanMode.sensor, FanSpeed.auto) == app_crea_trama(
         SERIAL, "00500000", "0410", "2F"
     )
     assert create_mode_speed_command(SERIAL, FanMode.alternate, FanSpeed.high) == app_crea_trama(

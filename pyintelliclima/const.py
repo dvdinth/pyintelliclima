@@ -8,15 +8,18 @@ REFRESH_DELAY = 5  # seconds
 
 
 class FanSpeed(StrEnum):
-    """Fan speed options for EcoComfort VMC devices."""
+    """Speed setpoints, as written to the device's `oper_ts` register.
+
+    Values are the register byte in decimal, which is also how `sync/cronos400`
+    reports the last commanded speed back in `speed_set`.
+    """
 
     off = "0"
     sleep = "1"
     low = "2"
     medium = "3"
     high = "4"
-    auto_get = "16"  # The value when getting device status that indicates auto mode
-    auto_set = "10"  # The value used when sending the command to set the device to auto mode
+    auto = "16"  # 0x10 - speed is left to the sensors or the weekly program
 
 
 class FanMode(StrEnum):

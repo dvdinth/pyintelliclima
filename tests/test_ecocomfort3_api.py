@@ -61,7 +61,7 @@ async def test_set_mode_speed_auto(mock_set_mode_speed):
 
     assert await api.set_mode_speed_auto("AABBCCDD") is True
     mock_set_mode_speed.assert_awaited_once_with(
-        "AABBCCDD", mode=FanMode.sensor, speed=FanSpeed.auto_set
+        "AABBCCDD", mode=FanMode.sensor, speed=FanSpeed.auto
     )
 
 

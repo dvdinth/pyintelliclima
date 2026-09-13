@@ -75,4 +75,4 @@ async def test_set_mode_speed_auto_calls_set_mode_speed(mock_set_mode_speed):
     result = await api.set_mode_speed_auto("ABCDEF01")
 
     assert result is True
-    mock_set_mode_speed.assert_awaited_once_with("ABCDEF01", mode="4", speed="10")
+    mock_set_mode_speed.assert_awaited_once_with("ABCDEF01", mode="4", speed="16")

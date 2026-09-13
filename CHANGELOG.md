@@ -18,6 +18,18 @@ not hardcoded in this repo.
   `co2_thrs` fields.
 - ECOCOMFORT 3 setters for temperature/humidity calibration, sensor thresholds, season,
   and free-cooling level.
+- ECOCOMFORT 3 filter wear tracking through `eco3/filters/`. `reset_filter_counter()`
+  additionally sends the `0x26` reset command frame, which the ECOCOMFORT 2.0 reset does
+  not need. Only `RESET` is reachable in the vendor app's ECOCOMFORT 3 UI, so the other
+  three actions are unverified against a real device.
+
+### Changed
+
+- **Breaking:** `get_filter_status()`, `set_filter_tracking_active()` and
+  `reset_filter_counter()` moved from `IntelliClimaAPI` onto the per-family device
+  clients, since the endpoint prefix differs. Call `api.ecocomfort.get_filter_status(sn)`
+  or `api.ecocomfort3.get_filter_status(sn)` instead of `api.get_filter_status(sn)`.
+  Previously an ECOCOMFORT 3 serial was silently posted to the ECOCOMFORT 2.0 endpoint.
 
 ### Fixed
 

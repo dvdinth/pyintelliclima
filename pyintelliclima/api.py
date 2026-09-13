@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Literal
 
 from aiohttp import ClientError, ClientSession
 from dacite import DaciteError, from_dict
+from typing_extensions import override
 
 from .const import (
     API_BASE_URL,
@@ -205,6 +206,22 @@ def create_season_free_cooling_command(
     return bytes_to_hex(base_data).upper()
 
 
+def create_filter_reset_command(device_sn: str) -> str:
+    """Create the command that clears an ECOCOMFORT 3 device's own filter counter.
+
+    Unlike the settings writes this frame carries a bare two-byte `objID` with no
+    padding and the dedicated `0x26` action byte instead of the generic `0x2F` write.
+    """
+    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
+    partial_command = "0A" + padded_sn + "001026" + "001A" + "001A00000000"
+    base_data = bytearray(hex_to_bytes(partial_command))
+    base_data.append(0x00)
+    base_data.append(0x0D)
+
+    base_data[-2] = checksum_crc8_nrsc5(base_data[1:-2])
+    return bytes_to_hex(base_data).upper()
+
+
 class IntelliClimaAPIError(Exception):
     """Exception for API errors."""
 
@@ -314,6 +331,26 @@ class _IntelliClimaVMCAPI:
         await asyncio.sleep(REFRESH_DELAY)
         return True
 
+    async def _post_filter_action(
+        self, serial: str, action: Literal["CALCULATE", "ACTIVATE", "DEACTIVATE", "RESET"]
+    ) -> IntelliClimaFilterStatus:
+        response = await self._post("filters/", {"serial": serial, "action": action})
+        return from_dict(data_class=IntelliClimaFilterStatus, data=response)
+
+    async def get_filter_status(self, serial: str) -> IntelliClimaFilterStatus:
+        """Calculate the current filter wear/cleaning status for a single device."""
+        return await self._post_filter_action(serial, "CALCULATE")
+
+    async def set_filter_tracking_active(
+        self, serial: str, active: bool
+    ) -> IntelliClimaFilterStatus:
+        """Enable or disable filter wear tracking for a single device."""
+        return await self._post_filter_action(serial, "ACTIVATE" if active else "DEACTIVATE")
+
+    async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:
+        """Reset the accumulated filter wear counter for a single device."""
+        return await self._post_filter_action(serial, "RESET")
+
 
 class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
     """API client for specific ECOCOMFORT 2.0 communication."""
@@ -359,7 +396,11 @@ class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
 
 
 class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
-    """API client for ECOCOMFORT 3 communication."""
+    """API client for ECOCOMFORT 3 communication.
+
+    Only `RESET` is reachable in the vendor app's ECOCOMFORT 3 filter UI, so whether
+    `eco3/filters/` also honours `CALCULATE`/`ACTIVATE`/`DEACTIVATE` is unverified.
+    """
 
     _endpoint_prefix = "eco3"
 
@@ -388,6 +429,17 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
     async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
         """Set the direction of a slave unit relative to its master."""
         return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
+
+    @override
+    async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:
+        """Reset the accumulated filter wear counter for a single device.
+
+        ECOCOMFORT 3 needs a second step that 2.0 does not have: `filters/` clears the
+        server-side counter, and only the follow-up command frame clears it on the unit.
+        """
+        status = await self._post_filter_action(serial, "RESET")
+        await self._post("send/", {"trama": create_filter_reset_command(serial)})
+        return status
 
 
 class IntelliClimaAPI:
@@ -553,31 +605,6 @@ class IntelliClimaAPI:
         if self.device_id_types.get(str(device_data["id"])) == "ECO3":
             return from_dict(data_class=IntelliClimaECO3, data=device_data)
         return from_dict(data_class=IntelliClimaECO, data=device_data)
-
-    async def _post_filter_action(
-        self, serial: str, action: Literal["CALCULATE", "ACTIVATE", "DEACTIVATE", "RESET"]
-    ) -> IntelliClimaFilterStatus:
-        response = await post_to_session(
-            self._session,
-            "eco/filters/",
-            headers=self._token_headers,
-            json_payload={"serial": serial, "action": action},
-        )
-        return from_dict(data_class=IntelliClimaFilterStatus, data=response)
-
-    async def get_filter_status(self, serial: str) -> IntelliClimaFilterStatus:
-        """Calculate the current filter wear/cleaning status for a single device."""
-        return await self._post_filter_action(serial, "CALCULATE")
-
-    async def set_filter_tracking_active(
-        self, serial: str, active: bool
-    ) -> IntelliClimaFilterStatus:
-        """Enable or disable filter wear tracking for a single device."""
-        return await self._post_filter_action(serial, "ACTIVATE" if active else "DEACTIVATE")
-
-    async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:
-        """Reset the accumulated filter wear counter for a single device."""
-        return await self._post_filter_action(serial, "RESET")
 
     async def set_house_and_device_ids(self) -> None:
         """Finds the user's houses and their corresponding devices."""

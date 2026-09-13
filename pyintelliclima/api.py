@@ -189,6 +189,11 @@ def create_advanced_settings_command(
     A field left as `None` is preserved unchanged on the device (sent as `0x7F`), matching
     the same "preserve" convention documented for this device's BLE protocol in the
     esphome-ecocomfort2 project. Only pass the field(s) you actually want to change.
+
+    WARNING: the register's trailing six-byte main-unit address has no preserve marker,
+    so every write to it clears `slv_addr`. On a satellite unit (`role` == "2") that
+    erases the unit's link to its main unit. The vendor app has the same hole - only its
+    Bluetooth path can rewrite the address - so there is no cloud-side way to avoid it.
     """
 
     def threshold_byte(level: ThresholdLevel | None, advanced: bool) -> int:
@@ -434,6 +439,9 @@ class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
         These fields share the same device register: any field left as `None` is
         preserved unchanged, so only pass the field(s) you actually want to change.
 
+        On a satellite unit this also clears `slv_addr` - see
+        `create_advanced_settings_command`.
+
         NOTE: reverse-engineering on 2026-07-29 found that humidity/VOC/lux threshold
         changes did not reliably persist or read back via `sync/cronos400` (nor in the
         vendor app's own UI), suggesting a device/firmware-side issue rather than an API
@@ -476,7 +484,11 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
         lux_threshold: ThresholdLevel | None = None,
         satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set ECOCOMFORT 3 sensor thresholds and/or satellite rotation."""
+        """Set ECOCOMFORT 3 sensor thresholds and/or satellite rotation.
+
+        Any field left as `None` is preserved unchanged. On a satellite unit this also
+        clears `slv_addr` - see `create_advanced_settings_command`.
+        """
         return await self._set_advanced_settings(
             device_sn,
             humidity_threshold=humidity_threshold,

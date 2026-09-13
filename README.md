@@ -24,7 +24,20 @@ device(s), or share the logs as described so I can add them.
 
 This API was made by reverse engineering the cloud API, through the use of an android emulator and proxy to catch the Intelliclima+ app traffic. As such, no public API exists and the functionality of this module breaks if the API changes. This module is provided as-is, with no guarantees of correctness, stability, or continued functionality. Use it at your own risk.
 
-### Air-quality values
+### Sensor values
+
+All values are returned as strings, and every sensor has a "no reading" sentinel that has
+to be filtered out before it reaches a consumer - report those as unavailable rather than
+as a measurement:
+
+| Field | Sentinel |
+| --- | --- |
+| `tamb` | `327.67` |
+| `rh` | `143` |
+| `voc_state`, `co2` | `65535` |
+| `aqi` | `143` |
+
+#### Air-quality values
 
 Read air quality from `voc_state` on both generations. It carries a different quantity on each,
 so it needs a different device class:
@@ -43,9 +56,6 @@ For a Home Assistant sensor, both with `UnitOfRatio.PARTS_PER_MILLION`:
 
 The ECOCOMFORT 3 eCO2 figure is VOC-derived rather than an NDIR measurement, so it responds to
 solvents and cooking as well as to occupancy.
-
-All values are returned as strings. `65535` in `voc_state` or `co2`, and `143` in `aqi`, mean "no
-reading" - report those as unavailable.
 
 ### Reading the current mode and speed
 

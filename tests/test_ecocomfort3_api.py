@@ -12,8 +12,8 @@ from pyintelliclima.const import (
     FanSpeed,
     FreeCoolingLevel,
     Season,
-    ThresholdLevel,
     SlaveRotation,
+    ThresholdLevel,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -134,9 +134,7 @@ async def test_set_slave_rotation_calls_set_advanced_settings(mock_set_advanced)
 
     assert await api.set_slave_rotation("AABBCCDD", SlaveRotation.discordant)
 
-    mock_set_advanced.assert_awaited_once_with(
-        "AABBCCDD", slave_rotation=SlaveRotation.discordant
-    )
+    mock_set_advanced.assert_awaited_once_with("AABBCCDD", slave_rotation=SlaveRotation.discordant)
 
 
 @patch("pyintelliclima.api.REFRESH_DELAY", 0)

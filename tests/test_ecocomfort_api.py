@@ -18,6 +18,7 @@ async def test_set_token_headers():
     assert api._token_headers == {"TOKEN": "new"}
 
 
+@patch("pyintelliclima.api.REFRESH_DELAY", 0)
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
 async def test_set_mode_speed_ok(mock_post):
     session = MagicMock()

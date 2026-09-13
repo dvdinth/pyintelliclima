@@ -7,7 +7,7 @@ from pyintelliclima.api import (
     create_advanced_settings_command,
     create_offsets_command,
 )
-from pyintelliclima.const import FreeCoolingLevel, Season, SlaveRotation, ThresholdLevel
+from pyintelliclima.const import FreeCoolingLevel, Season, SatelliteRotation, ThresholdLevel
 
 # --- create_offsets_command: golden values from real mitmproxy captures (2026-07-29) ---
 #
@@ -35,12 +35,12 @@ def test_create_offsets_command_matches_capture(temperature_offset, humidity_off
 
 
 def test_create_advanced_settings_command_rotation_concordant():
-    command = create_advanced_settings_command("12345678", slave_rotation=SlaveRotation.concordant)
+    command = create_advanced_settings_command("12345678", satellite_rotation=SatelliteRotation.concordant)
     assert command == "0A1234567800182F002000007F7F7F7F7F010000000000002F0D"
 
 
 def test_create_advanced_settings_command_rotation_discordant():
-    command = create_advanced_settings_command("12345678", slave_rotation=SlaveRotation.discordant)
+    command = create_advanced_settings_command("12345678", satellite_rotation=SatelliteRotation.discordant)
     assert command == "0A1234567800182F002000007F7F7F7F7F02000000000000250D"
 
 
@@ -144,7 +144,7 @@ async def test_set_slave_rotation_calls_set_advanced_settings(mock_set_advanced)
     api = IntelliClimaEcocomfort2API(session, token_headers={})
     mock_set_advanced.return_value = True
 
-    result = await api.set_slave_rotation("12345678", SlaveRotation.concordant)
+    result = await api.set_satellite_rotation("12345678", SatelliteRotation.concordant)
 
     assert result is True
-    mock_set_advanced.assert_awaited_once_with("12345678", slave_rotation=SlaveRotation.concordant)
+    mock_set_advanced.assert_awaited_once_with("12345678", satellite_rotation=SatelliteRotation.concordant)

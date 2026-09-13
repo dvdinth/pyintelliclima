@@ -51,6 +51,11 @@ an ECOCOMFORT 2.0.
   clients, since the endpoint prefix differs. Call `api.ecocomfort2.get_filter_status(sn)`
   or `api.ecocomfort3.get_filter_status(sn)` instead of `api.get_filter_status(sn)`.
   Previously an ECOCOMFORT 3 serial was silently posted to the ECOCOMFORT 2.0 endpoint.
+- **Breaking:** `SlaveRotation` is renamed to `SatelliteRotation`, `set_slave_rotation()` to
+  `set_satellite_rotation()`, and the `slave_rotation` keyword to `satellite_rotation`, following
+  the Home Assistant guidance against master/slave terminology. "Satellite unit" is the vendor
+  app's own English wording for these devices. The `role`, `slv_rot` and `slv_addr` status fields
+  keep their names: they are the server's JSON keys, which dacite matches verbatim.
 - README: `voc_state` is the eCO2 estimate in ppm, confirmed against the device manual and a
   device owner's measurement. `co2` remains unverified.
 

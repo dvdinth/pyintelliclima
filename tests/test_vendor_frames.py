@@ -23,7 +23,7 @@ from pyintelliclima.const import (
     FanSpeed,
     FreeCoolingLevel,
     Season,
-    SlaveRotation,
+    SatelliteRotation,
     ThresholdLevel,
 )
 
@@ -82,7 +82,7 @@ def test_advanced_settings_command_matches_vendor_app():
 
     # Untouched fields carry the app's 0x7F preserve marker.
     assert create_advanced_settings_command(
-        SERIAL, slave_rotation=SlaveRotation.discordant
+        SERIAL, satellite_rotation=SatelliteRotation.discordant
     ) == app_crea_trama(SERIAL, "00200000", "7F7F7F7F7F02000000000000", "2F")
 
 

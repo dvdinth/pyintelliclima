@@ -12,7 +12,7 @@ from pyintelliclima.const import (
     FanSpeed,
     FreeCoolingLevel,
     Season,
-    SlaveRotation,
+    SatelliteRotation,
     ThresholdLevel,
 )
 
@@ -132,9 +132,9 @@ async def test_set_slave_rotation_calls_set_advanced_settings(mock_set_advanced)
     api = IntelliClimaEcocomfort3API(MagicMock(), token_headers={})
     mock_set_advanced.return_value = True
 
-    assert await api.set_slave_rotation("AABBCCDD", SlaveRotation.discordant)
+    assert await api.set_satellite_rotation("AABBCCDD", SatelliteRotation.discordant)
 
-    mock_set_advanced.assert_awaited_once_with("AABBCCDD", slave_rotation=SlaveRotation.discordant)
+    mock_set_advanced.assert_awaited_once_with("AABBCCDD", satellite_rotation=SatelliteRotation.discordant)
 
 
 @patch("pyintelliclima.api.REFRESH_DELAY", 0)

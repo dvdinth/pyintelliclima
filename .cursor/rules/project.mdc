@@ -65,6 +65,9 @@ The library has four modules under `pyintelliclima/`:
 - Status polling: POST to `sync/cronos400` with a list of device IDs. Response `data[]` items have
   `model` and `config` fields that are JSON strings and must be parsed before passing to `dacite`.
 - Commands: POST to `eco/send/` (or `eco3/send/`) with `{"trama": "<hex command string>"}`.
+- The server's own JSON uses master/slave wording (`role`, `slv_rot`, `slv_addr`, `isMaster`,
+  `*MasterIDs`). Dataclass fields mirror those keys verbatim because dacite matches by field
+  name, but our own API surface says main/satellite instead - follow that in new code.
 - `mode_set`/`speed_set` are the last *commanded* values and are not what the unit is doing. The
   vendor app displays `mode_state`/`speed_state` instead; use `decode_fan_state()` for those.
 

@@ -20,8 +20,8 @@ from .const import (
     FanMode,
     FanSpeed,
     FreeCoolingLevel,
+    SatelliteRotation,
     Season,
-    SlaveRotation,
     ThresholdLevel,
 )
 from .intelliclima_types import (
@@ -131,10 +131,10 @@ def create_advanced_settings_command(
     voc_threshold: ThresholdLevel | None = None,
     voc_threshold_advanced: bool = False,
     lux_threshold: ThresholdLevel | None = None,
-    slave_rotation: SlaveRotation | None = None,
+    satellite_rotation: SatelliteRotation | None = None,
 ) -> str:
     """Creates the api request command for the shared humidity/VOC/lux threshold and
-    slave-rotation register.
+    satellite-rotation register.
 
     A field left as `None` is preserved unchanged on the device (sent as `0x7F`), matching
     the same "preserve" convention documented for this device's BLE protocol in the
@@ -151,7 +151,7 @@ def create_advanced_settings_command(
     rh_byte = threshold_byte(humidity_threshold, humidity_threshold_advanced)
     lux_byte = threshold_byte(lux_threshold, advanced=False)
     voc_byte = threshold_byte(voc_threshold, voc_threshold_advanced)
-    rotation_byte = 0x7F if slave_rotation is None else int(slave_rotation)
+    rotation_byte = 0x7F if satellite_rotation is None else int(satellite_rotation)
 
     partial_command = (
         "0A"
@@ -293,9 +293,9 @@ class _IntelliClimaVMCAPI:
         voc_threshold: ThresholdLevel | None = None,
         voc_threshold_advanced: bool = False,
         lux_threshold: ThresholdLevel | None = None,
-        slave_rotation: SlaveRotation | None = None,
+        satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set shared ECOCOMFORT sensor thresholds and/or slave rotation."""
+        """Set shared ECOCOMFORT sensor thresholds and/or satellite rotation."""
         command = create_advanced_settings_command(
             device_sn,
             humidity_threshold=humidity_threshold,
@@ -303,7 +303,7 @@ class _IntelliClimaVMCAPI:
             voc_threshold=voc_threshold,
             voc_threshold_advanced=voc_threshold_advanced,
             lux_threshold=lux_threshold,
-            slave_rotation=slave_rotation,
+            satellite_rotation=satellite_rotation,
         )
         return await self._send_command(command)
 
@@ -366,9 +366,9 @@ class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
         voc_threshold: ThresholdLevel | None = None,
         voc_threshold_advanced: bool = False,
         lux_threshold: ThresholdLevel | None = None,
-        slave_rotation: SlaveRotation | None = None,
+        satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set humidity/VOC/lux sensor-mode thresholds and/or slave rotation.
+        """Set humidity/VOC/lux sensor-mode thresholds and/or satellite rotation.
 
         These fields share the same device register: any field left as `None` is
         preserved unchanged, so only pass the field(s) you actually want to change.
@@ -377,7 +377,7 @@ class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
         changes did not reliably persist or read back via `sync/cronos400` (nor in the
         vendor app's own UI), suggesting a device/firmware-side issue rather than an API
         quirk. Do not build a stateful consumer (e.g. a Home Assistant entity) on top of
-        the threshold fields without further verification. `slave_rotation` was confirmed
+        the threshold fields without further verification. `satellite_rotation` was confirmed
         reliable both ways.
         """
         return await self._set_advanced_settings(
@@ -387,12 +387,12 @@ class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
             voc_threshold=voc_threshold,
             voc_threshold_advanced=voc_threshold_advanced,
             lux_threshold=lux_threshold,
-            slave_rotation=slave_rotation,
+            satellite_rotation=satellite_rotation,
         )
 
-    async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
-        """Set the direction of a slave unit relative to its master."""
-        return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
+    async def set_satellite_rotation(self, device_sn: str, rotation: SatelliteRotation) -> bool:
+        """Set the direction of a satellite unit relative to its main unit."""
+        return await self.set_advanced_settings(device_sn, satellite_rotation=rotation)
 
 
 class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
@@ -413,9 +413,9 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
         co2_threshold: ThresholdLevel | None = None,
         co2_threshold_advanced: bool = False,
         lux_threshold: ThresholdLevel | None = None,
-        slave_rotation: SlaveRotation | None = None,
+        satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set ECOCOMFORT 3 sensor thresholds and/or slave rotation."""
+        """Set ECOCOMFORT 3 sensor thresholds and/or satellite rotation."""
         return await self._set_advanced_settings(
             device_sn,
             humidity_threshold=humidity_threshold,
@@ -423,12 +423,12 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
             voc_threshold=co2_threshold,
             voc_threshold_advanced=co2_threshold_advanced,
             lux_threshold=lux_threshold,
-            slave_rotation=slave_rotation,
+            satellite_rotation=satellite_rotation,
         )
 
-    async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
-        """Set the direction of a slave unit relative to its master."""
-        return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
+    async def set_satellite_rotation(self, device_sn: str, rotation: SatelliteRotation) -> bool:
+        """Set the direction of a satellite unit relative to its main unit."""
+        return await self.set_advanced_settings(device_sn, satellite_rotation=rotation)
 
     @override
     async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:

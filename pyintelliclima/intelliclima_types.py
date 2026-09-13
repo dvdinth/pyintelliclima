@@ -19,6 +19,10 @@ from pyintelliclima.const import (
 
 # ruff: noqa: N815
 
+# Dataclass fields mirror the server's JSON keys verbatim - dacite matches by field name -
+# including its camelCase and its master/slave wording. Our own API surface uses
+# main/satellite instead.
+
 
 @dataclass
 class IntelliClimaLoginBody:
@@ -158,7 +162,7 @@ class IntelliClimaVMCBase:
     macwifi: str
     conn_num: str
     conn_state: str
-    role: str  # master/slave mode ("1" = master, "2" = slave)
+    role: str  # "1" = main unit, "2" = satellite unit
     rh_thrs: str
     lux_thrs: str
     voc_thrs: str | None

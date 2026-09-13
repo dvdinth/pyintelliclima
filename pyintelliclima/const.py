@@ -84,8 +84,8 @@ class FreeCoolingLevel(StrEnum):
     high = "3"
 
 
-class SlaveRotation(StrEnum):
-    """Direction of rotation for a slave/satellite unit relative to its master."""
+class SatelliteRotation(StrEnum):
+    """Direction of rotation for a satellite unit relative to its main unit."""
 
     concordant = "1"
     discordant = "2"

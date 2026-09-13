@@ -21,6 +21,11 @@ not hardcoded in this repo.
 
 ### Fixed
 
+- `IntelliClimaEcocomfortAPI.set_season()` and `set_free_cooling()` never reached the
+  device. They posted only to `eco/setdata/` / `eco/freecoolset/`, which update the
+  cloud-side record; the vendor app sends the `conf_ts` command frame first. The new
+  value therefore read back correctly from a status poll while the unit kept running its
+  old setting.
 - `get_all_device_status()` no longer loses every device's data when one device fails to
   parse. Enum and dacite errors were raised straight out of the polling loop, so a single
   unexpected value from one device (for example an ECOCOMFORT 3 on an account that also

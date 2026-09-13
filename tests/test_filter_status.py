@@ -15,7 +15,7 @@ async def test_get_filter_status_dirty(mock_post):
     mock_post.return_value = {
         "status": "OK",
         "action": "CALCULATE",
-        "serial": "000005fe",
+        "serial": "12345678",
         "is_active": True,
         "from_date": "2025-10-28 00:00:00",
         "stats": [
@@ -31,7 +31,7 @@ async def test_get_filter_status_dirty(mock_post):
         "change_filter": True,
     }
 
-    status = await api.get_filter_status("000005fe")
+    status = await api.get_filter_status("12345678")
 
     assert isinstance(status, IntelliClimaFilterStatus)
     assert status.change_filter is True
@@ -41,7 +41,7 @@ async def test_get_filter_status_dirty(mock_post):
     mock_post.assert_awaited_once()
     called_args, called_kwargs = mock_post.call_args
     assert called_args[1] == "eco/filters/"
-    assert called_kwargs["json_payload"] == {"serial": "000005fe", "action": "CALCULATE"}
+    assert called_kwargs["json_payload"] == {"serial": "12345678", "action": "CALCULATE"}
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
@@ -51,7 +51,7 @@ async def test_get_filter_status_clean(mock_post):
     mock_post.return_value = {
         "status": "OK",
         "action": "CALCULATE",
-        "serial": "000006f6",
+        "serial": "12345678",
         "is_active": True,
         "from_date": "2026-07-28 00:00:00",
         "stats": [],
@@ -59,7 +59,7 @@ async def test_get_filter_status_clean(mock_post):
         "change_filter": False,
     }
 
-    status = await api.get_filter_status("000006f6")
+    status = await api.get_filter_status("12345678")
 
     assert status.change_filter is False
     assert status.stats == []
@@ -72,7 +72,7 @@ async def test_set_filter_tracking_active(mock_post):
     mock_post.return_value = {
         "status": "OK",
         "action": "ACTIVATE",
-        "serial": "000006f6",
+        "serial": "12345678",
         "is_active": True,
         "from_date": "2026-08-04 00:00:00",
         "stats": [],
@@ -80,12 +80,12 @@ async def test_set_filter_tracking_active(mock_post):
         "change_filter": False,
     }
 
-    status = await api.set_filter_tracking_active("000006f6", True)
+    status = await api.set_filter_tracking_active("12345678", True)
 
     assert status.is_active is True
     called_args, called_kwargs = mock_post.call_args
     assert called_args[1] == "eco/filters/"
-    assert called_kwargs["json_payload"] == {"serial": "000006f6", "action": "ACTIVATE"}
+    assert called_kwargs["json_payload"] == {"serial": "12345678", "action": "ACTIVATE"}
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
@@ -95,7 +95,7 @@ async def test_set_filter_tracking_inactive(mock_post):
     mock_post.return_value = {
         "status": "OK",
         "action": "DEACTIVATE",
-        "serial": "000006f6",
+        "serial": "12345678",
         "is_active": False,
         "from_date": "2026-07-28 00:00:00",
         "stats": [],
@@ -103,11 +103,11 @@ async def test_set_filter_tracking_inactive(mock_post):
         "change_filter": False,
     }
 
-    status = await api.set_filter_tracking_active("000006f6", False)
+    status = await api.set_filter_tracking_active("12345678", False)
 
     assert status.is_active is False
     called_kwargs = mock_post.call_args.kwargs
-    assert called_kwargs["json_payload"] == {"serial": "000006f6", "action": "DEACTIVATE"}
+    assert called_kwargs["json_payload"] == {"serial": "12345678", "action": "DEACTIVATE"}
 
 
 @patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
@@ -117,7 +117,7 @@ async def test_reset_filter_counter(mock_post):
     mock_post.return_value = {
         "status": "OK",
         "action": "RESET",
-        "serial": "000006f6",
+        "serial": "12345678",
         "is_active": True,
         "from_date": "2026-08-04 00:00:00",
         "stats": [],
@@ -125,9 +125,9 @@ async def test_reset_filter_counter(mock_post):
         "change_filter": False,
     }
 
-    status = await api.reset_filter_counter("000006f6")
+    status = await api.reset_filter_counter("12345678")
 
     assert status.from_date == "2026-08-04 00:00:00"
     assert status.totale == 0
     called_kwargs = mock_post.call_args.kwargs
-    assert called_kwargs["json_payload"] == {"serial": "000006f6", "action": "RESET"}
+    assert called_kwargs["json_payload"] == {"serial": "12345678", "action": "RESET"}

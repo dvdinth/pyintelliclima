@@ -214,7 +214,11 @@ class IntelliClimaAuthError(IntelliClimaAPIError):
 
 
 class _IntelliClimaVMCAPI:
-    """Shared API client for the ECOCOMFORT VMC family."""
+    """Shared API client for the ECOCOMFORT VMC family.
+
+    Both generations speak the same command protocol over identically named
+    endpoints; only the `eco`/`eco3` prefix differs.
+    """
 
     _endpoint_prefix: ClassVar[str]
 
@@ -227,15 +231,19 @@ class _IntelliClimaVMCAPI:
         """Set the ECOCOMFORT API token headers."""
         self._token_headers = token_headers
 
+    async def _post(self, path: str, json_payload: dict[str, Any]) -> dict[str, Any]:
+        """POST to this device family's copy of `path`."""
+        return await post_to_session(
+            self._session,
+            f"{self._endpoint_prefix}/{path}",
+            headers=self._token_headers,
+            json_payload=json_payload,
+        )
+
     async def _send_command(self, command: str) -> bool:
         """Send a command frame to an ECOCOMFORT device."""
         LOGGER.debug("Sending command: %s", command)
-        await post_to_session(
-            self._session,
-            f"{self._endpoint_prefix}/send/",
-            headers=self._token_headers,
-            json_payload={"trama": command},
-        )
+        await self._post("send/", {"trama": command})
         await asyncio.sleep(REFRESH_DELAY)
         return True
 
@@ -282,35 +290,35 @@ class _IntelliClimaVMCAPI:
         )
         return await self._send_command(command)
 
+    async def set_season(self, device_sn: str, season: Season) -> bool:
+        """Set winter/summer mode for an ecocomfort device.
+
+        The command frame has to go out before `setdata/`: that endpoint only updates
+        the cloud-side record, so on its own the new value reads back from a status
+        poll while the device keeps running its old setting.
+        """
+        command = create_season_free_cooling_command(device_sn, season=season)
+        await self._post("send/", {"trama": command})
+        await self._post("setdata/", {"serial": device_sn, "data": json.dumps({"ws": int(season)})})
+        await asyncio.sleep(REFRESH_DELAY)
+        return True
+
+    async def set_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> bool:
+        """Set the free cooling level for an ecocomfort device (only effective in summer mode).
+
+        As with `set_season`, `freecoolset/` alone never reaches the device.
+        """
+        command = create_season_free_cooling_command(device_sn, free_cooling=level)
+        await self._post("send/", {"trama": command})
+        await self._post("freecoolset/", {"serial": device_sn, "value": int(level)})
+        await asyncio.sleep(REFRESH_DELAY)
+        return True
+
 
 class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
     """API client for specific ECOCOMFORT 2.0 communication."""
 
     _endpoint_prefix = "eco"
-
-    async def set_season(self, device_sn: str, season: Season) -> bool:
-        """Set winter/summer mode for an ecocomfort device."""
-        payload = {"serial": device_sn, "data": json.dumps({"ws": int(season)})}
-        await post_to_session(
-            self._session,
-            "eco/setdata/",
-            headers=self._token_headers,
-            json_payload=payload,
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
-
-    async def set_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> bool:
-        """Set the free cooling level for an ecocomfort device (only effective in summer mode)."""
-        payload = {"serial": device_sn, "value": int(level)}
-        await post_to_session(
-            self._session,
-            "eco/freecoolset/",
-            headers=self._token_headers,
-            json_payload=payload,
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
 
     async def set_advanced_settings(
         self,
@@ -380,42 +388,6 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
     async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
         """Set the direction of a slave unit relative to its master."""
         return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
-
-    async def set_season(self, device_sn: str, season: Season) -> bool:
-        """Set winter/summer mode on an ECOCOMFORT 3 device."""
-        command = create_season_free_cooling_command(device_sn, season=season)
-        await post_to_session(
-            self._session,
-            "eco3/send/",
-            headers=self._token_headers,
-            json_payload={"trama": command},
-        )
-        await post_to_session(
-            self._session,
-            "eco3/setdata/",
-            headers=self._token_headers,
-            json_payload={"serial": device_sn, "data": json.dumps({"ws": int(season)})},
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
-
-    async def set_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> bool:
-        """Set the free-cooling level on an ECOCOMFORT 3 device."""
-        command = create_season_free_cooling_command(device_sn, free_cooling=level)
-        await post_to_session(
-            self._session,
-            "eco3/send/",
-            headers=self._token_headers,
-            json_payload={"trama": command},
-        )
-        await post_to_session(
-            self._session,
-            "eco3/freecoolset/",
-            headers=self._token_headers,
-            json_payload={"serial": device_sn, "value": int(level)},
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
 
 
 class IntelliClimaAPI:

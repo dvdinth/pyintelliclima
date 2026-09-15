@@ -592,7 +592,7 @@ class IntelliClimaFilterStatus:
 
     serial: str
     is_active: bool
-    from_date: str
+    from_date: str | None
     stats: list[IntelliClimaFilterStatsEntry]
     totale: float
     change_filter: bool

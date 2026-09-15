@@ -142,14 +142,15 @@ async def test_eco3_filter_status_uses_eco3_endpoint(mock_post):
         "action": "CALCULATE",
         "serial": "12345678",
         "is_active": True,
-        "from_date": "2026-08-04 00:00:00",
+        "from_date": None,
         "stats": [],
         "totale": 0,
         "change_filter": False,
     }
 
-    await api.ecocomfort3.get_filter_status("12345678")
+    status = await api.ecocomfort3.get_filter_status("12345678")
 
+    assert status.from_date is None
     assert mock_post.call_args.args[1] == "eco3/filters/"
 
 

@@ -26,6 +26,7 @@ from .intelliclima_types import (
     IntelliClimaVMCBase,
     ThresholdSetting,
     decode_fan_state,
+    decode_offset,
     decode_threshold,
 )
 
@@ -45,6 +46,7 @@ __all__ = (
     "FanState",
     "ThresholdSetting",
     "decode_fan_state",
+    "decode_offset",
     "decode_threshold",
     "FanMode",
     "FanPreset",

@@ -243,6 +243,17 @@ def _decode_threshold(raw: str | None) -> ThresholdSetting | None:
     return decode_threshold(raw)
 
 
+def decode_offset(raw: str) -> float:
+    """Convert a reported `offset_temp`/`offset_hum` register into its human unit.
+
+    Both registers hold hundredths of a degree or a percent - `-230` is -2.3 degrees -
+    which is the unit `set_temperature_and_humidity_offsets` takes, not the unit the
+    register reports. The server reports the value already signed, so this is a plain
+    scale rather than a two's complement decode. Raises `ValueError` on a non-integer.
+    """
+    return int(raw) / 100
+
+
 @dataclass
 class IntelliClimaVMCBase:
     """Status fields common to the ECOCOMFORT VMC family."""
@@ -354,6 +365,29 @@ class IntelliClimaVMCBase:
         if not self.lux_thrs.strip():
             return None
         return ThresholdLevel(str(int(self.lux_thrs)))
+
+    @property
+    def temperature_offset(self) -> float | None:
+        """Calibration offset in degrees, `None` if the device reports no value.
+
+        Read this rather than `offset_temp`, which is the raw register in hundredths:
+        `set_temperature_and_humidity_offsets` takes degrees, so resending the raw
+        field would write a hundredfold offset.
+        """
+        if not self.offset_temp.strip():
+            return None
+        return decode_offset(self.offset_temp)
+
+    @property
+    def humidity_offset(self) -> int | None:
+        """Calibration offset in percent, `None` if the device reports no value.
+
+        Rounded to whole percent, which is the resolution the vendor app both displays
+        and writes, and what `set_temperature_and_humidity_offsets` accepts.
+        """
+        if not self.offset_hum.strip():
+            return None
+        return round(decode_offset(self.offset_hum))
 
 
 # dacite builds both generations off one shared field list, so `voc_thrs` and `co2_thrs`

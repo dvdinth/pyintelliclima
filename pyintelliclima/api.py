@@ -161,8 +161,12 @@ def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) ->
 def create_offsets_command(device_sn: str, temperature_offset: float, humidity_offset: int) -> str:
     """Creates the api request command that sets temperature and humidity calibration offsets.
 
+    Offsets are in degrees and percent, not in the hundredths the device reports them in,
+    and are scaled here as the vendor app does.
+
     Both offsets share the same device register, so both must be sent together - pass the
-    device's current value for whichever offset isn't being changed.
+    device's current value for whichever offset isn't being changed, taken from
+    `temperature_offset`/`humidity_offset` rather than from the raw `offset_*` fields.
     """
     temp_raw = round(temperature_offset * 100) & 0xFFFF
     hum_raw = round(humidity_offset * 100) & 0xFFFF
@@ -335,7 +339,13 @@ class _IntelliClimaVMCAPI:
     async def set_temperature_and_humidity_offsets(
         self, device_sn: str, temperature_offset: float, humidity_offset: int
     ) -> bool:
-        """Set temperature and humidity calibration offsets."""
+        """Set temperature and humidity calibration offsets, in degrees and percent.
+
+        Both share one register and must be written together, so read the one that is
+        not changing back through `device.temperature_offset`/`device.humidity_offset`.
+        The raw `offset_temp`/`offset_hum` fields are hundredths and would write a
+        hundredfold offset if resent unchanged.
+        """
         command = create_offsets_command(device_sn, temperature_offset, humidity_offset)
         return await self._send_command(command)
 

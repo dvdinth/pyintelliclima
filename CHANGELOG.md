@@ -35,6 +35,10 @@ an ECOCOMFORT 2.0.
   control" flag in bit 7 on top of the level, so a threshold with that flag on read back as
   `129`-`131` and was not a valid `ThresholdLevel` at all. Decoding it on read is what makes a
   partial write to the shared threshold register safe. `lux_thrs` has no such flag.
+- `decode_offset()`, plus `temperature_offset` and `humidity_offset` on
+  `IntelliClimaVMCBase`. `offset_temp` and `offset_hum` are hundredths, while
+  `set_temperature_and_humidity_offsets()` takes degrees and percent - so resending the raw
+  field to preserve it, which that shared register requires, wrote a hundredfold offset.
 - The protocol enums (`FanMode`, `FanSpeed`, `FanSpeedState`, `FanPreset`, `Season`,
   `FreeCoolingLevel`, `ThresholdLevel`, `SatelliteRotation`) and `IntelliClimaFilterStatus` are
   exported from the package root, since they are argument and return types of the public

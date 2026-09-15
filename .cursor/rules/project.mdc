@@ -44,9 +44,11 @@ The library has four modules under `pyintelliclima/`:
   is ever populated. `IntelliClimaC800` exists but is
   unverified and not implemented. `IntelliClimaDevices` is the container returned from device
   polling. `decode_fan_state()` turns the reported `mode_state`/`speed_state` registers into a
-  `FanState`, and `decode_threshold()` turns a reported `*_thrs` register into a
-  `ThresholdSetting`. Both are exposed as properties on `IntelliClimaVMCBase`; prefer those over
-  the raw fields, and decode before resending a threshold in a partial write.
+  `FanState`, `decode_threshold()` turns a reported `*_thrs` register into a
+  `ThresholdSetting`, and `decode_offset()` scales a reported `offset_*` register from
+  hundredths into the degrees and percent the setter takes. All three are exposed as properties
+  on `IntelliClimaVMCBase`; prefer those over the raw fields, and decode before resending a
+  threshold or an offset in a partial write.
 - **`api.py`**: The client classes plus low-level helpers:
   - `IntelliClimaAPI`: Top-level client. Handles auth (SHA-256 password hash), fetches house/device
     IDs, and polls all device statuses. Owns `ecocomfort2` and `ecocomfort3` sub-clients.

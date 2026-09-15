@@ -82,6 +82,17 @@ right now.
 Note that threshold writes were not observed to persist reliably - see
 `IntelliClimaEcocomfort2API.set_advanced_settings`.
 
+### Reading the calibration offsets
+
+`offset_temp` and `offset_hum` are in hundredths - `-230` is `-2.3` degrees - while
+`set_temperature_and_humidity_offsets()` takes degrees and percent. Read
+`device.temperature_offset` and `device.humidity_offset`, each `None` when the device
+reports no value, so the two ends agree on units.
+
+This matters because both offsets share one device register and must be written
+together: changing one means resending the other, and resending the raw field writes a
+hundredfold offset.
+
 ### Reading the current mode and speed
 
 `mode_set` and `speed_set` hold the last _commanded_ values, which is not necessarily what the

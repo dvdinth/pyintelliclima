@@ -281,8 +281,10 @@ _COMMON_ACTIONS: tuple[Action, ...] = (
             Param("temperature_offset", "float", default="0"),
             Param("humidity_offset", "int", default="0"),
         ),
-        help="Both share one register, so both are always written - pass the current "
-        "value for the one you are not changing.",
+        help="Degrees and percent, not the hundredths the raw offset_temp/offset_hum "
+        "fields report. Both share one register, so both are always written - copy the "
+        "one you are not changing from the device's decoded temperature_offset/"
+        "humidity_offset.",
     ),
     Action(
         "set_satellite_rotation",
@@ -450,6 +452,7 @@ def _decoded(device: IntelliClimaVMCBase) -> dict[str, Any]:
     decoded: dict[str, Any] = {}
     names = ("fan_state", "humidity_threshold", "luminosity_threshold")
     names += ("co2_threshold",) if isinstance(device, IntelliClimaECO3) else ("voc_threshold",)
+    names += ("temperature_offset", "humidity_offset")
     for name in names:
         try:
             value: Any = getattr(device, name)

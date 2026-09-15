@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 # API endpoints
 API_BASE_URL = "https://intelliclima.fantinicosmi.it"
@@ -8,15 +8,18 @@ REFRESH_DELAY = 5  # seconds
 
 
 class FanSpeed(StrEnum):
-    """Fan speed options for EcoComfort VMC devices."""
+    """Speed setpoints, as written to the device's `oper_ts` register.
+
+    Values are the register byte in decimal, which is also how `sync/cronos400`
+    reports the last commanded speed back in `speed_set`.
+    """
 
     off = "0"
     sleep = "1"
     low = "2"
     medium = "3"
     high = "4"
-    auto_get = "16"  # The value when getting device status that indicates auto mode
-    auto_set = "10"  # The value used when sending the command to set the device to auto mode
+    auto = "16"  # 0x10 - speed is left to the sensors or the weekly program
 
 
 class FanMode(StrEnum):
@@ -27,6 +30,42 @@ class FanMode(StrEnum):
     outward = "2"
     alternate = "3"
     sensor = "4"
+
+
+# `speed_state` bit flags. The running speed itself sits in the low three bits.
+SPEED_FLAG_PROFILED = 0x10  # speed comes from the weekly program or the sensors
+SPEED_FLAG_ADVANCED = 0x20  # an advanced threshold is engaged: run one step faster
+SPEED_FLAG_BOOST = 0x40
+SPEED_FLAG_NIGHT = 0x80
+SPEED_VALUE_MASK = 0x07
+
+# `mode_state` carries the airflow direction in its low nibble.
+MODE_DIRECTION_MASK = 0x0F
+
+
+class FanSpeedState(IntEnum):
+    """Actual running speed, decoded from the `speed_state` bitfield.
+
+    Distinct from `FanSpeed`, which holds setpoints in the device's own encoding:
+    a device set to `FanSpeed.auto` still reports a concrete speed here.
+    """
+
+    off = 0
+    sleep = 1
+    speed1 = 2
+    speed2 = 3
+    speed3 = 4
+    boost = 5
+
+
+class FanPreset(StrEnum):
+    """What is currently driving the fan."""
+
+    off = "off"
+    sleep = "sleep"
+    manual = "manual"
+    program = "program"
+    auto = "auto"
 
 
 class Season(StrEnum):
@@ -45,8 +84,8 @@ class FreeCoolingLevel(StrEnum):
     high = "3"
 
 
-class SlaveRotation(StrEnum):
-    """Direction of rotation for a slave/satellite unit relative to its master."""
+class SatelliteRotation(StrEnum):
+    """Direction of rotation for a satellite unit relative to its main unit."""
 
     concordant = "1"
     discordant = "2"
@@ -59,3 +98,9 @@ class ThresholdLevel(StrEnum):
     low = "1"
     medium = "2"
     high = "3"
+
+
+# `rh_thrs`/`voc_thrs`/`co2_thrs` carry the level in their low bits and "advanced control"
+# in bit 7. Unlike `SPEED_FLAG_ADVANCED` this only says the feature is armed, not engaging.
+THRESHOLD_FLAG_ADVANCED = 0x80
+THRESHOLD_VALUE_MASK = 0x7F

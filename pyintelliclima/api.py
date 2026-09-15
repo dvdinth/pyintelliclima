@@ -7,10 +7,12 @@ import json
 import logging
 import uuid
 from dataclasses import asdict
-from typing import Any, ClassVar, Literal
+from datetime import date
+from typing import Any, ClassVar, Literal, cast
 
 from aiohttp import ClientError, ClientSession
-from dacite import from_dict
+from dacite import DaciteError, from_dict
+from typing_extensions import override
 
 from .const import (
     API_BASE_URL,
@@ -19,19 +21,35 @@ from .const import (
     FanMode,
     FanSpeed,
     FreeCoolingLevel,
+    SatelliteRotation,
     Season,
-    SlaveRotation,
     ThresholdLevel,
 )
 from .intelliclima_types import (
     IntelliClimaDevices,
-    IntelliClimaECO,
+    IntelliClimaECO2,
     IntelliClimaECO3,
     IntelliClimaFilterStatus,
+    IntelliClimaGetDeviceBody,
     IntelliClimaLoginBody,
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# `model.modello` values for the device families this library implements. The vendor app
+# uses the same two strings to branch its ECOCOMFORT UI; "RHINO" and "C900" are its other
+# values.
+VMC_DATACLASSES: dict[str, type[IntelliClimaECO2] | type[IntelliClimaECO3]] = {
+    "ECO": IntelliClimaECO2,
+    "ECO3": IntelliClimaECO3,
+}
+
+# `error` values a rejected login can carry, as the vendor app's own login screen
+# distinguishes them. Anything else is a server-side failure, not a credential problem.
+LOGIN_AUTH_ERRORS = {
+    "NO_USERNAME": "Unknown username",
+    "NO_PASSWORD": "No or incorrect password",
+}
 
 
 def generate_read_url(path: str) -> str:
@@ -44,16 +62,50 @@ async def post_to_session(
     api_url: str,
     headers: dict[str, Any] | None = None,
     json_payload: dict[str, Any] | None = None,
+    *,
+    raise_on_status: bool = True,
 ) -> dict[str, Any]:
-    """Send a POST HTTP request and convert response back to dictionary."""
+    """Send a POST HTTP request and convert response back to dictionary.
+
+    The server reports its own failures in the body rather than in the HTTP status, so
+    a non-`OK` `status` raises. Pass `raise_on_status=False` when the caller needs to
+    read the body's `error` field to tell one failure from another.
+    """
     async with session.post(generate_read_url(api_url), headers=headers, json=json_payload) as resp:
         resp.raise_for_status()
         response_text = await resp.text()
         response = json.loads(response_text)
-        if response.get("status") != "OK":
+        if raise_on_status and response.get("status") != "OK":
             msg = f"Got non-OK response status: {response.get('status')}"
             raise IntelliClimaAPIError(msg)
     return response
+
+
+def _load_json_field(value: Any) -> Any:
+    """Expand a response field the server nests as a JSON string.
+
+    Any of these fields can come back as JSON `null` - the vendor app guards every one
+    of them with its own `ifNullJSON` - so a value that is not parsable JSON text is
+    handed back untouched rather than raising and costing the caller its whole device.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+def create_request_token() -> str:
+    """Build the `TOKEN` header the vendor app sends on unauthenticated requests.
+
+    Authenticated calls carry the login token, but login itself has no token yet, so the
+    app hashes today's date as `DDMMYYYY` in the phone's own local time instead. The
+    server does not appear to enforce it today - this library authenticated for a long
+    time without sending it - but it costs nothing and keeps login working if that
+    changes.
+    """
+    return hashlib.sha256(date.today().strftime("%d%m%Y").encode()).hexdigest()
 
 
 def hex_to_bytes(x: str) -> bytes:
@@ -81,6 +133,12 @@ def checksum_crc8_nrsc5(
     return crc
 
 
+# Every `create_*_command` below embeds `device_sn` verbatim, as the vendor app does. The
+# serial is a four-byte value the device reports as eight hex characters, and each frame's
+# hardcoded length field assumes exactly that - so anything else has to fail loudly in
+# `hex_to_bytes` rather than be padded into a frame the device would misread.
+
+
 def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) -> str:
     """Creates the api request command that sets mode and speed for a certain device."""
     LOGGER.debug(
@@ -89,9 +147,7 @@ def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) ->
         mode,
         speed,
     )
-    # unhexlify requires an even-length string (2 hex chars per byte)
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
-    partial_command = "0A" + padded_sn + "000E2F00500000" + f"{int(mode):02d}" + f"{int(speed):02d}"
+    partial_command = "0A" + device_sn + "000E2F00500000" + f"{int(mode):02X}" + f"{int(speed):02X}"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)  # Placeholder for checksum
     base_data.append(0x0D)  # Termination byte
@@ -105,13 +161,16 @@ def create_mode_speed_command(device_sn: str, mode: FanMode, speed: FanSpeed) ->
 def create_offsets_command(device_sn: str, temperature_offset: float, humidity_offset: int) -> str:
     """Creates the api request command that sets temperature and humidity calibration offsets.
 
+    Offsets are in degrees and percent, not in the hundredths the device reports them in,
+    and are scaled here as the vendor app does.
+
     Both offsets share the same device register, so both must be sent together - pass the
-    device's current value for whichever offset isn't being changed.
+    device's current value for whichever offset isn't being changed, taken from
+    `temperature_offset`/`humidity_offset` rather than from the raw `offset_*` fields.
     """
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
     temp_raw = round(temperature_offset * 100) & 0xFFFF
     hum_raw = round(humidity_offset * 100) & 0xFFFF
-    partial_command = "0A" + padded_sn + "00102F00210000" + f"{temp_raw:04X}" + f"{hum_raw:04X}"
+    partial_command = "0A" + device_sn + "00102F00210000" + f"{temp_raw:04X}" + f"{hum_raw:04X}"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)  # Placeholder for checksum
     base_data.append(0x0D)  # Termination byte
@@ -130,14 +189,18 @@ def create_advanced_settings_command(
     voc_threshold: ThresholdLevel | None = None,
     voc_threshold_advanced: bool = False,
     lux_threshold: ThresholdLevel | None = None,
-    slave_rotation: SlaveRotation | None = None,
+    satellite_rotation: SatelliteRotation | None = None,
 ) -> str:
     """Creates the api request command for the shared humidity/VOC/lux threshold and
-    slave-rotation register.
+    satellite-rotation register.
 
     A field left as `None` is preserved unchanged on the device (sent as `0x7F`), matching
     the same "preserve" convention documented for this device's BLE protocol in the
     esphome-ecocomfort2 project. Only pass the field(s) you actually want to change.
+
+    The register ends in six zero bytes with no preserve marker. The vendor app sends
+    them the same way, and a proxied write to a satellite unit left its `slv_addr`
+    intact, so they do not carry the main-unit address the field's position suggests.
     """
 
     def threshold_byte(level: ThresholdLevel | None, advanced: bool) -> int:
@@ -146,15 +209,14 @@ def create_advanced_settings_command(
         value = int(level)
         return value + 0x80 if advanced and value else value
 
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
     rh_byte = threshold_byte(humidity_threshold, humidity_threshold_advanced)
     lux_byte = threshold_byte(lux_threshold, advanced=False)
     voc_byte = threshold_byte(voc_threshold, voc_threshold_advanced)
-    rotation_byte = 0x7F if slave_rotation is None else int(slave_rotation)
+    rotation_byte = 0x7F if satellite_rotation is None else int(satellite_rotation)
 
     partial_command = (
         "0A"
-        + padded_sn
+        + device_sn
         + "00182F00200000"
         + "7F"
         + f"{rh_byte:02X}"
@@ -185,18 +247,32 @@ def create_season_free_cooling_command(
     The two values occupy one nibble each. A value left as ``None`` is encoded
     with the vendor app's preserve marker for that nibble.
     """
-    padded_sn = "0" + device_sn if len(device_sn) % 2 else device_sn
     season_nibble = "7" if season is None else f"{int(season):X}"
     free_cooling_nibble = "F" if free_cooling is None else f"{int(free_cooling):X}"
     partial_command = (
         "0A"
-        + padded_sn
+        + device_sn
         + "00182F00200000"
         + "7F7F7F7F"
         + season_nibble
         + free_cooling_nibble
         + "7F000000000000"
     )
+    base_data = bytearray(hex_to_bytes(partial_command))
+    base_data.append(0x00)
+    base_data.append(0x0D)
+
+    base_data[-2] = checksum_crc8_nrsc5(base_data[1:-2])
+    return bytes_to_hex(base_data).upper()
+
+
+def create_filter_reset_command(device_sn: str) -> str:
+    """Create the command that clears an ECOCOMFORT 3 device's own filter counter.
+
+    Unlike the settings writes this frame carries a bare two-byte `objID` with no
+    padding and the dedicated `0x26` action byte instead of the generic `0x2F` write.
+    """
+    partial_command = "0A" + device_sn + "001026" + "001A" + "001A00000000"
     base_data = bytearray(hex_to_bytes(partial_command))
     base_data.append(0x00)
     base_data.append(0x0D)
@@ -214,7 +290,11 @@ class IntelliClimaAuthError(IntelliClimaAPIError):
 
 
 class _IntelliClimaVMCAPI:
-    """Shared API client for the ECOCOMFORT VMC family."""
+    """Shared API client for the ECOCOMFORT VMC family.
+
+    Both generations speak the same command protocol over identically named
+    endpoints; only the `eco`/`eco3` prefix differs.
+    """
 
     _endpoint_prefix: ClassVar[str]
 
@@ -227,15 +307,19 @@ class _IntelliClimaVMCAPI:
         """Set the ECOCOMFORT API token headers."""
         self._token_headers = token_headers
 
+    async def _post(self, path: str, json_payload: dict[str, Any]) -> dict[str, Any]:
+        """POST to this device family's copy of `path`."""
+        return await post_to_session(
+            self._session,
+            f"{self._endpoint_prefix}/{path}",
+            headers=self._token_headers,
+            json_payload=json_payload,
+        )
+
     async def _send_command(self, command: str) -> bool:
         """Send a command frame to an ECOCOMFORT device."""
         LOGGER.debug("Sending command: %s", command)
-        await post_to_session(
-            self._session,
-            f"{self._endpoint_prefix}/send/",
-            headers=self._token_headers,
-            json_payload={"trama": command},
-        )
+        await self._post("send/", {"trama": command})
         await asyncio.sleep(REFRESH_DELAY)
         return True
 
@@ -250,12 +334,18 @@ class _IntelliClimaVMCAPI:
 
     async def set_mode_speed_auto(self, device_sn: str) -> bool:
         """Set the auto preset mode and speed."""
-        return await self.set_mode_speed(device_sn, mode=FanMode.sensor, speed=FanSpeed.auto_set)
+        return await self.set_mode_speed(device_sn, mode=FanMode.sensor, speed=FanSpeed.auto)
 
     async def set_temperature_and_humidity_offsets(
         self, device_sn: str, temperature_offset: float, humidity_offset: int
     ) -> bool:
-        """Set temperature and humidity calibration offsets."""
+        """Set temperature and humidity calibration offsets, in degrees and percent.
+
+        Both share one register and must be written together, so read the one that is
+        not changing back through `device.temperature_offset`/`device.humidity_offset`.
+        The raw `offset_temp`/`offset_hum` fields are hundredths and would write a
+        hundredfold offset if resent unchanged.
+        """
         command = create_offsets_command(device_sn, temperature_offset, humidity_offset)
         return await self._send_command(command)
 
@@ -268,9 +358,9 @@ class _IntelliClimaVMCAPI:
         voc_threshold: ThresholdLevel | None = None,
         voc_threshold_advanced: bool = False,
         lux_threshold: ThresholdLevel | None = None,
-        slave_rotation: SlaveRotation | None = None,
+        satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set shared ECOCOMFORT sensor thresholds and/or slave rotation."""
+        """Set shared ECOCOMFORT sensor thresholds and/or satellite rotation."""
         command = create_advanced_settings_command(
             device_sn,
             humidity_threshold=humidity_threshold,
@@ -278,39 +368,70 @@ class _IntelliClimaVMCAPI:
             voc_threshold=voc_threshold,
             voc_threshold_advanced=voc_threshold_advanced,
             lux_threshold=lux_threshold,
-            slave_rotation=slave_rotation,
+            satellite_rotation=satellite_rotation,
         )
         return await self._send_command(command)
 
-
-class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
-    """API client for specific ECOCOMFORT 2.0 communication."""
-
-    _endpoint_prefix = "eco"
+    async def _write_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> None:
+        """Write a free cooling level to both the device and the cloud-side record."""
+        command = create_season_free_cooling_command(device_sn, free_cooling=level)
+        await self._post("send/", {"trama": command})
+        await self._post("freecoolset/", {"serial": device_sn, "value": int(level)})
 
     async def set_season(self, device_sn: str, season: Season) -> bool:
-        """Set winter/summer mode for an ecocomfort device."""
-        payload = {"serial": device_sn, "data": json.dumps({"ws": int(season)})}
-        await post_to_session(
-            self._session,
-            "eco/setdata/",
-            headers=self._token_headers,
-            json_payload=payload,
-        )
+        """Set winter/summer mode for an ecocomfort device.
+
+        The command frame has to go out before `setdata/`: that endpoint only updates
+        the cloud-side record, so on its own the new value reads back from a status
+        poll while the device keeps running its old setting.
+
+        Switching to winter also clears free cooling, which the vendor app does for the
+        same reason. Free cooling is summer-only, and the app's UI just hides a stale
+        level out of season rather than resetting it, so nothing else would ever clear
+        the device's own register.
+        """
+        command = create_season_free_cooling_command(device_sn, season=season)
+        await self._post("send/", {"trama": command})
+        await self._post("setdata/", {"serial": device_sn, "data": json.dumps({"ws": int(season)})})
+        if season is Season.winter:
+            await self._write_free_cooling(device_sn, FreeCoolingLevel.off)
         await asyncio.sleep(REFRESH_DELAY)
         return True
 
     async def set_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> bool:
-        """Set the free cooling level for an ecocomfort device (only effective in summer mode)."""
-        payload = {"serial": device_sn, "value": int(level)}
-        await post_to_session(
-            self._session,
-            "eco/freecoolset/",
-            headers=self._token_headers,
-            json_payload=payload,
-        )
+        """Set the free cooling level for an ecocomfort device (only effective in summer mode).
+
+        As with `set_season`, `freecoolset/` alone never reaches the device.
+        """
+        await self._write_free_cooling(device_sn, level)
         await asyncio.sleep(REFRESH_DELAY)
         return True
+
+    async def _post_filter_action(
+        self, serial: str, action: Literal["CALCULATE", "ACTIVATE", "DEACTIVATE", "RESET"]
+    ) -> IntelliClimaFilterStatus:
+        response = await self._post("filters/", {"serial": serial, "action": action})
+        return from_dict(data_class=IntelliClimaFilterStatus, data=response)
+
+    async def get_filter_status(self, serial: str) -> IntelliClimaFilterStatus:
+        """Calculate the current filter wear/cleaning status for a single device."""
+        return await self._post_filter_action(serial, "CALCULATE")
+
+    async def set_filter_tracking_active(
+        self, serial: str, active: bool
+    ) -> IntelliClimaFilterStatus:
+        """Enable or disable filter wear tracking for a single device."""
+        return await self._post_filter_action(serial, "ACTIVATE" if active else "DEACTIVATE")
+
+    async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:
+        """Reset the accumulated filter wear counter for a single device."""
+        return await self._post_filter_action(serial, "RESET")
+
+
+class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
+    """API client for specific ECOCOMFORT 2.0 communication."""
+
+    _endpoint_prefix = "eco"
 
     async def set_advanced_settings(
         self,
@@ -321,18 +442,22 @@ class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
         voc_threshold: ThresholdLevel | None = None,
         voc_threshold_advanced: bool = False,
         lux_threshold: ThresholdLevel | None = None,
-        slave_rotation: SlaveRotation | None = None,
+        satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set humidity/VOC/lux sensor-mode thresholds and/or slave rotation.
+        """Set humidity/VOC/lux sensor-mode thresholds and/or satellite rotation.
 
         These fields share the same device register: any field left as `None` is
         preserved unchanged, so only pass the field(s) you actually want to change.
+        Read a field's current value back through `decode_threshold` before resending
+        it: the raw register carries the "advanced" flag in bit 7, so sending it
+        unchanged as a level would turn a level of 1-3 into an out-of-range value, and
+        sending the level alone would clear a flag the user had set.
 
         NOTE: reverse-engineering on 2026-07-29 found that humidity/VOC/lux threshold
         changes did not reliably persist or read back via `sync/cronos400` (nor in the
         vendor app's own UI), suggesting a device/firmware-side issue rather than an API
         quirk. Do not build a stateful consumer (e.g. a Home Assistant entity) on top of
-        the threshold fields without further verification. `slave_rotation` was confirmed
+        the threshold fields without further verification. `satellite_rotation` was confirmed
         reliable both ways.
         """
         return await self._set_advanced_settings(
@@ -342,16 +467,20 @@ class IntelliClimaEcocomfortAPI(_IntelliClimaVMCAPI):
             voc_threshold=voc_threshold,
             voc_threshold_advanced=voc_threshold_advanced,
             lux_threshold=lux_threshold,
-            slave_rotation=slave_rotation,
+            satellite_rotation=satellite_rotation,
         )
 
-    async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
-        """Set the direction of a slave unit relative to its master."""
-        return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
+    async def set_satellite_rotation(self, device_sn: str, rotation: SatelliteRotation) -> bool:
+        """Set the direction of a satellite unit relative to its main unit."""
+        return await self.set_advanced_settings(device_sn, satellite_rotation=rotation)
 
 
 class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
-    """API client for ECOCOMFORT 3 communication."""
+    """API client for ECOCOMFORT 3 communication.
+
+    Only `RESET` is reachable in the vendor app's ECOCOMFORT 3 filter UI, so whether
+    `eco3/filters/` also honours `CALCULATE`/`ACTIVATE`/`DEACTIVATE` is unverified.
+    """
 
     _endpoint_prefix = "eco3"
 
@@ -364,9 +493,13 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
         co2_threshold: ThresholdLevel | None = None,
         co2_threshold_advanced: bool = False,
         lux_threshold: ThresholdLevel | None = None,
-        slave_rotation: SlaveRotation | None = None,
+        satellite_rotation: SatelliteRotation | None = None,
     ) -> bool:
-        """Set ECOCOMFORT 3 sensor thresholds and/or slave rotation."""
+        """Set ECOCOMFORT 3 sensor thresholds and/or satellite rotation.
+
+        Any field left as `None` is preserved unchanged, and a field being resent should
+        come from `decode_threshold` rather than from the raw register.
+        """
         return await self._set_advanced_settings(
             device_sn,
             humidity_threshold=humidity_threshold,
@@ -374,48 +507,23 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
             voc_threshold=co2_threshold,
             voc_threshold_advanced=co2_threshold_advanced,
             lux_threshold=lux_threshold,
-            slave_rotation=slave_rotation,
+            satellite_rotation=satellite_rotation,
         )
 
-    async def set_slave_rotation(self, device_sn: str, rotation: SlaveRotation) -> bool:
-        """Set the direction of a slave unit relative to its master."""
-        return await self.set_advanced_settings(device_sn, slave_rotation=rotation)
+    async def set_satellite_rotation(self, device_sn: str, rotation: SatelliteRotation) -> bool:
+        """Set the direction of a satellite unit relative to its main unit."""
+        return await self.set_advanced_settings(device_sn, satellite_rotation=rotation)
 
-    async def set_season(self, device_sn: str, season: Season) -> bool:
-        """Set winter/summer mode on an ECOCOMFORT 3 device."""
-        command = create_season_free_cooling_command(device_sn, season=season)
-        await post_to_session(
-            self._session,
-            "eco3/send/",
-            headers=self._token_headers,
-            json_payload={"trama": command},
-        )
-        await post_to_session(
-            self._session,
-            "eco3/setdata/",
-            headers=self._token_headers,
-            json_payload={"serial": device_sn, "data": json.dumps({"ws": int(season)})},
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
+    @override
+    async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:
+        """Reset the accumulated filter wear counter for a single device.
 
-    async def set_free_cooling(self, device_sn: str, level: FreeCoolingLevel) -> bool:
-        """Set the free-cooling level on an ECOCOMFORT 3 device."""
-        command = create_season_free_cooling_command(device_sn, free_cooling=level)
-        await post_to_session(
-            self._session,
-            "eco3/send/",
-            headers=self._token_headers,
-            json_payload={"trama": command},
-        )
-        await post_to_session(
-            self._session,
-            "eco3/freecoolset/",
-            headers=self._token_headers,
-            json_payload={"serial": device_sn, "value": int(level)},
-        )
-        await asyncio.sleep(REFRESH_DELAY)
-        return True
+        ECOCOMFORT 3 needs a second step that 2.0 does not have: `filters/` clears the
+        server-side counter, and only the follow-up command frame clears it on the unit.
+        """
+        status = await self._post_filter_action(serial, "RESET")
+        await self._post("send/", {"trama": create_filter_reset_command(serial)})
+        return status
 
 
 class IntelliClimaAPI:
@@ -429,13 +537,14 @@ class IntelliClimaAPI:
         self.auth_token: str | None = None
         self.user_id: str | None = None
         self.house_ids: list[str] = []
-        self.device_id_types: dict[str, str] = {}
+        self.ecocomfort2_ids: list[str] = []
+        self.ecocomfort3_ids: list[str] = []
         self._mono_url = API_BASE_URL + API_MONO
         self._token_headers = {
             "TOKENID": "",
             "TOKEN": "",
         }
-        self.ecocomfort = IntelliClimaEcocomfortAPI(self._session, self._token_headers)
+        self.ecocomfort2 = IntelliClimaEcocomfort2API(self._session, self._token_headers)
         self.ecocomfort3 = IntelliClimaEcocomfort3API(self._session, self._token_headers)
 
     async def authenticate(self) -> bool:
@@ -457,17 +566,28 @@ class IntelliClimaAPI:
             LOGGER.info("Login with Intelliclima user: %s", self._username)
             LOGGER.debug("Login payload: %s", json.dumps(login_payload, indent=2))
 
+            # A rejected login is an HTTP 200 whose body carries the reason, so the
+            # status check has to be done here rather than in post_to_session: bad
+            # credentials must surface as IntelliClimaAuthError and not as a generic
+            # API error, or a consumer cannot tell a changed password from an outage.
             response = await post_to_session(
                 self._session,
                 f"user/login/{self._username}/{hashed_password}",
+                headers={"TOKEN": create_request_token()},
                 json_payload=login_payload,
+                raise_on_status=False,
             )
+
+            if response.get("status") != "OK":
+                error = response.get("error")
+                if error in LOGIN_AUTH_ERRORS:
+                    raise IntelliClimaAuthError(LOGIN_AUTH_ERRORS[error])
+                msg = f"Login failed with status {response.get('status')!r}, error {error!r}"
+                raise IntelliClimaAPIError(msg)
 
             self.auth_token = response.get("token")
             self.user_id = response.get("id")
 
-            if response.get("error") == "NO_PASSWORD":
-                raise IntelliClimaAuthError("No or incorrect password")
             if not self.auth_token:
                 raise IntelliClimaAuthError("No token in response")
             if not self.user_id:
@@ -480,48 +600,37 @@ class IntelliClimaAPI:
                 }
             )
 
-            await self.set_house_and_device_ids()
-
         except ClientError as err:
             LOGGER.error("Authentication failed: %s", err)
             raise IntelliClimaAuthError(f"Authentication failed: {err}") from err
 
-        else:
-            return True
+        # Outside the handler above: the credentials are already accepted by this point,
+        # so a discovery failure is a transport or server problem, not an auth one.
+        await self.set_house_and_device_ids()
+        return True
 
     async def set_all_token_headers(self, token_headers: dict[str, Any]) -> None:
         """Sets main API token headers and child device API token headers."""
         self._token_headers = token_headers
-        await self.ecocomfort.set_token_headers(token_headers)
+        await self.ecocomfort2.set_token_headers(token_headers)
         await self.ecocomfort3.set_token_headers(token_headers)
 
     async def get_all_device_status(
         self,
     ) -> IntelliClimaDevices:
         """Poll all devices."""
-        device_ids_eco: list[str] = []
-        device_ids_eco3: list[str] = []
-        for device_id, device_type in self.device_id_types.items():
-            if device_type == "ECO":
-                device_ids_eco.append(str(device_id))
-            elif device_type == "ECO3":
-                device_ids_eco3.append(str(device_id))
-            else:
-                LOGGER.warning(
-                    "Ignoring unsupported IntelliClima device type %s",
-                    device_type,
-                )
-
-        devices_eco_string = ",".join(device_ids_eco)
-        devices_eco3_string = ",".join(device_ids_eco3)
-        get_device_body = {
-            "IDs": "",
-            "ECOs": devices_eco_string,
-            "ECO3s": devices_eco3_string,
-            "includi_eco": True,
-            "includi_ledot": True,
-            "includi_eco3": True,
-        }
+        devices_eco_string = ",".join(self.ecocomfort2_ids)
+        devices_eco3_string = ",".join(self.ecocomfort3_ids)
+        get_device_body = asdict(
+            IntelliClimaGetDeviceBody(
+                IDs="",
+                ECOs=devices_eco_string,
+                ECO3s=devices_eco3_string,
+                includi_eco=True,
+                includi_ledot=True,
+                includi_eco3=True,
+            )
+        )
         LOGGER.debug(
             "Obtaining status for IntelliClima ECO devices: %s; ECO3 devices: %s",
             devices_eco_string,
@@ -532,34 +641,24 @@ class IntelliClimaAPI:
             self._session, "sync/cronos400", json_payload=get_device_body
         )
 
-        # Parse 'model' and 'config' fields JSON strings to Python objects
-        eco_devices: dict[str, IntelliClimaECO] = {}
+        eco_devices: dict[str, IntelliClimaECO2] = {}
         eco3_devices: dict[str, IntelliClimaECO3] = {}
         for device_data in response.get("data", []):
             try:
-                device_data["model"] = json.loads(device_data.get("model", "{}"))
-            except (KeyError, json.JSONDecodeError):
-                device_data["model"] = device_data.get("model")
+                device = self._parse_device(device_data)
+            except (KeyError, ValueError, TypeError, DaciteError):
+                # A single device the server describes unexpectedly must not cost every
+                # other device on the account its update for this poll.
+                LOGGER.exception(
+                    "Skipping IntelliClima device %s: could not parse status",
+                    device_data.get("id"),
+                )
+                continue
 
-            try:
-                device_data["config"] = json.loads(device_data.get("config", "{}"))
-            except (KeyError, json.JSONDecodeError):
-                device_data["config"] = device_data.get("config")
-
-            # The low nibble contains the airflow mode. ECOCOMFORT devices may
-            # set flags in the upper nibble (for example, ECOCOMFORT 3 has been
-            # observed returning 20 for sensor mode: 0x10 | 0x04).
-            mode_set = int(device_data["mode_set"]) & 0x0F
-            device_data["mode_set"] = FanMode(str(mode_set))
-            device_data["speed_set"] = FanSpeed(device_data["speed_set"])
-
-            device_id = str(device_data["id"])
-            if self.device_id_types.get(device_id) == "ECO3":
-                eco3_device = from_dict(data_class=IntelliClimaECO3, data=device_data)
-                eco3_devices[eco3_device.id] = eco3_device
+            if isinstance(device, IntelliClimaECO3):
+                eco3_devices[device.id] = device
             else:
-                eco_device = from_dict(data_class=IntelliClimaECO, data=device_data)
-                eco_devices[eco_device.id] = eco_device
+                eco_devices[device.id] = device
 
         return IntelliClimaDevices(
             ecocomfort2_devices=eco_devices,
@@ -567,50 +666,74 @@ class IntelliClimaAPI:
             ecocomfort3_devices=eco3_devices,
         )
 
-    async def _post_filter_action(
-        self, serial: str, action: Literal["CALCULATE", "ACTIVATE", "DEACTIVATE", "RESET"]
-    ) -> IntelliClimaFilterStatus:
-        response = await post_to_session(
-            self._session,
-            "eco/filters/",
-            headers=self._token_headers,
-            json_payload={"serial": serial, "action": action},
-        )
-        return from_dict(data_class=IntelliClimaFilterStatus, data=response)
+    def _parse_device(self, device_data: dict[str, Any]) -> IntelliClimaECO2 | IntelliClimaECO3:
+        """Turn one `sync/cronos400` entry into the dataclass for its device family.
 
-    async def get_filter_status(self, serial: str) -> IntelliClimaFilterStatus:
-        """Calculate the current filter wear/cleaning status for a single device."""
-        return await self._post_filter_action(serial, "CALCULATE")
+        The family comes from `model.modello` in the entry itself, which is what the
+        vendor app dispatches on throughout - it never consults the discovery response
+        for this. A model we don't implement raises, so the caller skips that one device
+        rather than mis-parsing it: RHINOCOMFORT 3 in particular shares enough of this
+        schema that dacite would otherwise accept it as an ECOCOMFORT 2.0.
+        """
+        # 'model' arrives as a JSON string and has to be expanded before dacite sees it.
+        # The sibling 'config' is deliberately left alone: no VMC dataclass has that
+        # field, and the vendor app never reads it for an ECOCOMFORT either.
+        device_data["model"] = _load_json_field(device_data.get("model"))
 
-    async def set_filter_tracking_active(
-        self, serial: str, active: bool
-    ) -> IntelliClimaFilterStatus:
-        """Enable or disable filter wear tracking for a single device."""
-        return await self._post_filter_action(serial, "ACTIVATE" if active else "DEACTIVATE")
+        # These are the last commanded setpoints, not the running state - use
+        # decode_fan_state() on mode_state/speed_state for that.
+        #
+        # Only the mode byte is masked. It packs the "not manually fixed" flag beside a
+        # real direction in the low nibble (ECOCOMFORT 3 reports 20 for sensor mode:
+        # 0x10 | 0x04), whereas for the speed byte that flag is the whole value -
+        # FanSpeed.auto is 0x10 with the speed bits at zero, so masking it would read
+        # back as off.
+        mode_set = int(device_data["mode_set"]) & 0x0F
+        device_data["mode_set"] = FanMode(str(mode_set))
+        device_data["speed_set"] = FanSpeed(device_data["speed_set"])
 
-    async def reset_filter_counter(self, serial: str) -> IntelliClimaFilterStatus:
-        """Reset the accumulated filter wear counter for a single device."""
-        return await self._post_filter_action(serial, "RESET")
+        raw_model = device_data["model"]
+        model = cast("dict[str, Any]", raw_model) if isinstance(raw_model, dict) else {}
+        modello: str | None = model.get("modello")
+        if modello not in VMC_DATACLASSES:
+            msg = f"Unsupported IntelliClima model {modello!r}"
+            raise ValueError(msg)
+
+        return from_dict(data_class=VMC_DATACLASSES[modello], data=device_data)
 
     async def set_house_and_device_ids(self) -> None:
-        """Finds the user's houses and their corresponding devices."""
+        """Find the user's houses and the ECOCOMFORT devices in them.
 
-        try:
-            LOGGER.info(f"Obtaining IntelliClima house & devices for user: {self.user_id}")
+        Device families come from the response's own `ecoIDs`/`eco3IDs` arrays, which is
+        what the vendor app reads. The per-device `tipo` inside `houses` looks like it
+        would serve the same purpose, but no vendor code ever touches it.
+        """
 
-            response = await post_to_session(
-                self._session,
-                f"casa/elenco3/{self.user_id}",
-                headers=self._token_headers,
-            )
+        LOGGER.info("Obtaining IntelliClima house & devices for user: %s", self.user_id)
 
-            houses = response.get("houses", {})
-            self.house_ids = list(houses.keys())
-            self.device_id_types = {
-                str(device.get("id")): device.get("tipo")
-                for house_id in self.house_ids
-                for device in houses[house_id]
-                if device.get("tipo") != "CH"
-            }
-        except Exception as e:  # noqa: BLE001
-            LOGGER.error(f"Error while getting houses for user: {self.user_id}: {e}")
+        # Deliberately not caught: a failed discovery leaves every ID list empty, which
+        # is indistinguishable from an account that genuinely owns no supported device.
+        # The caller has to be able to tell those apart.
+        response = await post_to_session(
+            self._session,
+            f"casa/elenco3/{self.user_id}",
+            headers=self._token_headers,
+        )
+
+        houses = response.get("houses", {})
+        self.house_ids = list(houses.keys())
+        self.ecocomfort2_ids = [str(device_id) for device_id in response.get("ecoIDs", [])]
+        self.ecocomfort3_ids = [str(device_id) for device_id in response.get("eco3IDs", [])]
+
+        # Everything else on the account is a device family this library does not
+        # implement - boiler controllers, RHINOCOMFORT units. Logged so an owner
+        # asking why their device is missing gets an answer.
+        supported = set(self.ecocomfort2_ids) | set(self.ecocomfort3_ids)
+        skipped = [
+            str(device.get("id"))
+            for house_id in self.house_ids
+            for device in houses[house_id]
+            if str(device.get("id")) not in supported
+        ]
+        if skipped:
+            LOGGER.info("Ignoring unsupported IntelliClima devices: %s", ", ".join(skipped))

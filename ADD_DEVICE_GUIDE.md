@@ -78,9 +78,11 @@ this section. If it says `x11`, follow the steps below.
 - **Wrong display manager.** The gear icon only appears when Ubuntu's default login manager
   (`gdm3`) is in use. Some Ubuntu variants ship with a different one (`lightdm`) that does not
   offer Wayland. Install and activate `gdm3`:
+
   ```bash
   sudo apt install gdm3
   ```
+
   During installation you may be prompted to choose a default display manager — select `gdm3`.
   Then reboot. The gear icon should now appear at the login screen.
 
@@ -270,6 +272,7 @@ tab open — this is where you will see captured requests.
 
 **6c.** Launch the **IntelliClima+** app inside Waydroid and log in with your IntelliClima
 credentials. Use the app normally for a few minutes. Specifically, make sure to:
+
 - Open the device list (so the app fetches device status)
 - Change the speed or mode of your device at least once
 - If your device has any special features (timers, programs, sensors), interact with those too
@@ -363,8 +366,9 @@ more complete the protocol picture will be, and the easier it is to implement su
 ## Troubleshooting
 
 **mitmproxy browser tab shows no requests from IntelliClima+**
-- Make sure you ran the `adb shell settings put global http_proxy` command *after* starting
-  mitmproxy and *before* opening the app.
+
+- Make sure you ran the `adb shell settings put global http_proxy` command _after_ starting
+  mitmproxy and _before_ opening the app.
 - Confirm the IP address in the `adb` command matches the one from `ip address show waydroid0`.
 - Try restarting Waydroid with `sudo systemctl restart waydroid-container` and repeating
   step 6.
@@ -397,9 +401,11 @@ lifetime**. Check first, before touching anything from step 5:
 
   To confirm this is your problem, look for Chromium's real error code in the Android log while
   the app is running:
+
   ```bash
   adb logcat -d | grep "net_error"
   ```
+
   `net_error -213` is `ERR_CERT_VALIDITY_TOO_LONG` and confirms the lifetime issue.
   `net_error -202` (`ERR_CERT_AUTHORITY_INVALID`) is a genuine trust problem — in that case
   continue below.
@@ -443,8 +449,10 @@ without TLS interception, so Google's pinned connections keep working normally a
 happy about having a working internet connection.
 
 **`adb` command says "no devices found"**
+
 - Waydroid must be running before you use `adb`. Launch Waydroid from the application menu
   first, then try again.
 
 **Waydroid does not start / says Wayland is required**
+
 - Follow the "Getting a Wayland Session on Ubuntu" steps in the Prerequisites section above.

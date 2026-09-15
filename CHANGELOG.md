@@ -92,9 +92,9 @@ an ECOCOMFORT 2.0.
 - `IntelliClimaVMCBase.dev_state` is documented as ECOCOMFORT 3's filter-change flag, which is
   the only filter signal that generation has - the vendor app never asks `eco3/filters/` to
   calculate wear the way it does for ECOCOMFORT 2.0.
-- `create_advanced_settings_command()` documents that the register's trailing main-unit address
-  has no preserve marker, so any threshold write clears `slv_addr` on a satellite unit. The
-  vendor app's cloud path has the same hole; only its Bluetooth path can rewrite the address.
+- `create_advanced_settings_command()` documents that the register's trailing six zero bytes do
+  not carry the main-unit address their position suggests. Proxied vendor-app traffic sends the
+  same bytes, and a write to a satellite unit left its `slv_addr` intact.
 - `IntelliClimaGetDeviceBody` now matches the request actually sent and is what builds it, so
   the two cannot drift apart again. It had declared `C900s`/`RHINOs` and their `includi_*`
   flags, which `get_all_device_status()` has never sent.

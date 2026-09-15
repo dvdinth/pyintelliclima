@@ -194,10 +194,9 @@ def create_advanced_settings_command(
     the same "preserve" convention documented for this device's BLE protocol in the
     esphome-ecocomfort2 project. Only pass the field(s) you actually want to change.
 
-    WARNING: the register's trailing six-byte main-unit address has no preserve marker,
-    so every write to it clears `slv_addr`. On a satellite unit (`role` == "2") that
-    erases the unit's link to its main unit. The vendor app has the same hole - only its
-    Bluetooth path can rewrite the address - so there is no cloud-side way to avoid it.
+    The register ends in six zero bytes with no preserve marker. The vendor app sends
+    them the same way, and a proxied write to a satellite unit left its `slv_addr`
+    intact, so they do not carry the main-unit address the field's position suggests.
     """
 
     def threshold_byte(level: ThresholdLevel | None, advanced: bool) -> int:
@@ -444,9 +443,6 @@ class IntelliClimaEcocomfort2API(_IntelliClimaVMCAPI):
         unchanged as a level would turn a level of 1-3 into an out-of-range value, and
         sending the level alone would clear a flag the user had set.
 
-        On a satellite unit this also clears `slv_addr` - see
-        `create_advanced_settings_command`.
-
         NOTE: reverse-engineering on 2026-07-29 found that humidity/VOC/lux threshold
         changes did not reliably persist or read back via `sync/cronos400` (nor in the
         vendor app's own UI), suggesting a device/firmware-side issue rather than an API
@@ -492,8 +488,7 @@ class IntelliClimaEcocomfort3API(_IntelliClimaVMCAPI):
         """Set ECOCOMFORT 3 sensor thresholds and/or satellite rotation.
 
         Any field left as `None` is preserved unchanged, and a field being resent should
-        come from `decode_threshold` rather than from the raw register. On a satellite
-        unit this also clears `slv_addr` - see `create_advanced_settings_command`.
+        come from `decode_threshold` rather than from the raw register.
         """
         return await self._set_advanced_settings(
             device_sn,

@@ -27,7 +27,7 @@ an ECOCOMFORT 2.0.
 - `decode_fan_state()` and `IntelliClimaVMCBase.fan_state`, returning a `FanState` with the
   running direction, speed, preset and the profiled/advanced/boost/night flags, plus the
   `FanSpeedState` and `FanPreset` enums. `speed_state` is a bitfield that was not previously
-  decoded at all; `mode_set`/`speed_set` are the last *commanded* values and remain the right
+  decoded at all; `mode_set`/`speed_set` are the last _commanded_ values and remain the right
   source only for a write that wants to preserve the current speed.
 - `decode_threshold()` and `ThresholdSetting`, plus `humidity_threshold` and
   `luminosity_threshold` on `IntelliClimaVMCBase`, `voc_threshold` on `IntelliClimaECO2` and

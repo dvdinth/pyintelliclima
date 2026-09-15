@@ -32,8 +32,8 @@ To add project-specific content that survives regeneration, edit `.cursor/rules/
 The library has four modules under `pyintelliclima/`:
 
 - **`const.py`**: API base URL, endpoint constants, `REFRESH_DELAY` (5s sleep after commands), and
-  the protocol enums. `FanMode`/`FanSpeed` are *setpoints*, with string values that are the register
-  byte in decimal. `FanSpeedState`/`FanPreset` plus the `SPEED_FLAG_*` masks describe the *reported*
+  the protocol enums. `FanMode`/`FanSpeed` are _setpoints_, with string values that are the register
+  byte in decimal. `FanSpeedState`/`FanPreset` plus the `SPEED_FLAG_*` masks describe the _reported_
   running state, which is a different encoding. `ThresholdLevel` is likewise a setpoint: the
   reported threshold registers add the `THRESHOLD_FLAG_ADVANCED` bit on top of it.
 - **`intelliclima_types.py`**: Dataclasses for all request/response types. `IntelliClimaVMCBase`
@@ -77,7 +77,7 @@ The library has four modules under `pyintelliclima/`:
 - The server's own JSON uses master/slave wording (`role`, `slv_rot`, `slv_addr`, `isMaster`,
   `*MasterIDs`). Dataclass fields mirror those keys verbatim because dacite matches by field
   name, but our own API surface says main/satellite instead - follow that in new code.
-- `mode_set`/`speed_set` are the last *commanded* values and are not what the unit is doing. The
+- `mode_set`/`speed_set` are the last _commanded_ values and are not what the unit is doing. The
   vendor app displays `mode_state`/`speed_state` instead; read `device.fan_state` for those.
   Writes that preserve "the current speed" should still use `speed_set`, or a temporary boost
   or night override gets commanded back as a permanent setting.

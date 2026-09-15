@@ -115,7 +115,7 @@ extensions:
 
 - [basedpyright docs](https://docs.basedpyright.com/latest/)
 
-* * *
+---
 
-*This file was built with
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+_This file was built with
+[simple-modern-uv](https://github.com/jlevy/simple-modern-uv)._

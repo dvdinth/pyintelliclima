@@ -9,7 +9,7 @@
 
 </div>
 
-* * *
+---
 
 This is a Python module for communicating with IntelliClima ECOCOMFORT 2.0 and
 ECOCOMFORT 3 devices.
@@ -30,24 +30,24 @@ All values are returned as strings, and every sensor has a "no reading" sentinel
 to be filtered out before it reaches a consumer - report those as unavailable rather than
 as a measurement:
 
-| Field | Sentinel |
-| --- | --- |
-| `tamb` | `327.67` |
-| `rh` | `143` |
-| `voc_state`, `co2` | `65535` |
-| `aqi` | `143` |
+| Field              | Sentinel |
+| ------------------ | -------- |
+| `tamb`             | `327.67` |
+| `rh`               | `143`    |
+| `voc_state`, `co2` | `65535`  |
+| `aqi`              | `143`    |
 
 #### Air-quality values
 
 Read air quality from `voc_state` on both generations. It carries a different quantity on each,
 so it needs a different device class:
 
-| Field | ECOCOMFORT 2.0 | ECOCOMFORT 3 |
-| --- | --- | --- |
-| `voc_state` | VOC, ppm | eCO2, ppm |
-| `co2` | no sensor | unreliable - do not use |
-| `aqi` | no sensor | air-quality index, 1-5 |
-| threshold field | `voc_thrs` | `co2_thrs` |
+| Field           | ECOCOMFORT 2.0 | ECOCOMFORT 3            |
+| --------------- | -------------- | ----------------------- |
+| `voc_state`     | VOC, ppm       | eCO2, ppm               |
+| `co2`           | no sensor      | unreliable - do not use |
+| `aqi`           | no sensor      | air-quality index, 1-5  |
+| threshold field | `voc_thrs`     | `co2_thrs`              |
 
 For a Home Assistant sensor, both with `UnitOfRatio.PARTS_PER_MILLION`:
 
@@ -63,12 +63,12 @@ solvents and cooking as well as to occupancy.
 "advanced control" flag in bit 7, so a threshold with that flag on reads back as `129`-`131`.
 Read the decoded properties instead, each `None` when the device reports no value:
 
-| Property | Register | Type |
-| --- | --- | --- |
-| `device.humidity_threshold` | `rh_thrs` | `ThresholdSetting` |
+| Property                                     | Register   | Type               |
+| -------------------------------------------- | ---------- | ------------------ |
+| `device.humidity_threshold`                  | `rh_thrs`  | `ThresholdSetting` |
 | `device.voc_threshold` (ECOCOMFORT 2.0 only) | `voc_thrs` | `ThresholdSetting` |
-| `device.co2_threshold` (ECOCOMFORT 3 only) | `co2_thrs` | `ThresholdSetting` |
-| `device.luminosity_threshold` | `lux_thrs` | `ThresholdLevel` |
+| `device.co2_threshold` (ECOCOMFORT 3 only)   | `co2_thrs` | `ThresholdSetting` |
+| `device.luminosity_threshold`                | `lux_thrs` | `ThresholdLevel`   |
 
 A `ThresholdSetting` is a `level` plus an `advanced` flag. Luminosity is a bare level - it is the
 one threshold with no advanced-control option on either generation.
@@ -84,7 +84,7 @@ Note that threshold writes were not observed to persist reliably - see
 
 ### Reading the current mode and speed
 
-`mode_set` and `speed_set` hold the last *commanded* values, which is not necessarily what the
+`mode_set` and `speed_set` hold the last _commanded_ values, which is not necessarily what the
 unit is doing - the vendor app never displays them. Read `device.fan_state` instead, which
 decodes the reported `mode_state`/`speed_state` registers into the running direction, speed,
 preset, and the boost/night/profiled/advanced flags.
@@ -103,7 +103,7 @@ Partial credit for the reverse engineering process of the API goes to them.
 ECOCOMFORT 3 support, and the observation that the IntelliClima+ app ships as plain JavaScript
 and can therefore be read directly, are thanks to [@rbressers](https://github.com/rbressers).
 
-* * *
+---
 
 ## Project Docs
 
@@ -111,7 +111,7 @@ For how to install uv and Python, see [installation.md](installation.md).
 
 For development workflows, see [development.md](development.md).
 
-* * *
+---
 
-*This project was built from
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+_This project was built from
+[simple-modern-uv](https://github.com/jlevy/simple-modern-uv)._

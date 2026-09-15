@@ -67,6 +67,26 @@ source .venv/bin/activate
 
 See [uv docs](https://docs.astral.sh/uv/) for details.
 
+## Debug UI
+
+`devtools/debug_ui.py` is a local browser tool for driving the API by hand, so protocol
+work does not need a Home Assistant restart to try. It logs in with real credentials,
+polls devices, exposes every client method as a generated form, builds command frames,
+and can POST an arbitrary endpoint - with every request and response shown verbatim.
+
+```shell
+uv run python devtools/debug_ui.py --open   # http://127.0.0.1:8765
+
+# Optional, to prefill the login form (credentials are never written to disk):
+export INTELLICLIMA_USERNAME=my-cool-username
+export INTELLICLIMA_PASSWORD=...
+```
+
+**Use at your own risk.** Commands sent from the UI reach real hardware over an
+undocumented, reverse-engineered API. Writes cannot be undone, and there is no warranty
+or liability for damaged devices or lost settings. The destructive actions are flagged in
+the UI and need an explicit confirmation.
+
 ## Agent Rules
 
 See [.cursor/rules](.cursor/rules) for agent rules.

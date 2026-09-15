@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IntelliClima debug UI</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1b1e24; --panel2: #22262e; --line: #2e333d;
+    --text: #dde1e8; --muted: #8b93a2; --accent: #5aa9e6; --ok: #63c98a;
+    --warn: #e6b45a; --err: #e67a7a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  a { color: var(--accent); }
+  h1 { font-size: 15px; margin: 0; }
+  h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .06em; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+           border-radius: 4px; padding: 5px 10px; font: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: #24506e; border-color: #2f6d95; }
+  button.danger { background: #5c2b2b; border-color: #7d3a3a; }
+  input, select, textarea { background: #101317; color: var(--text); border: 1px solid var(--line);
+                            border-radius: 4px; padding: 5px 7px; font: inherit; width: 100%; }
+  textarea { min-height: 90px; resize: vertical; }
+  label { display: block; color: var(--muted); margin-bottom: 3px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 140px; }
+  .muted { color: var(--muted); }
+  .err { color: var(--err); }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .banner { background: #45301a; border-bottom: 1px solid #6b4a24; color: #f0d9b5;
+            padding: 8px 14px; }
+  .banner b { color: var(--warn); }
+  header { display: flex; gap: 12px; align-items: center; padding: 10px 14px;
+           background: var(--panel); border-bottom: 1px solid var(--line); }
+  header .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 280px 1fr; gap: 12px; padding: 12px;
+         align-items: start; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+           padding: 12px; }
+  .device { border: 1px solid var(--line); border-radius: 5px; padding: 8px; margin-bottom: 8px;
+            cursor: pointer; background: var(--panel2); }
+  .device:hover { border-color: var(--accent); }
+  .device.sel { border-color: var(--accent); background: #23303c; }
+  .device .nm { font-weight: 600; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button.on { background: #24506e; border-color: #2f6d95; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 14px; }
+  .kv div { display: flex; justify-content: space-between; gap: 8px;
+            border-bottom: 1px dotted var(--line); padding: 2px 0; }
+  .kv span:first-child { color: var(--muted); }
+  pre { background: #101317; border: 1px solid var(--line); border-radius: 5px; padding: 9px;
+        overflow: auto; max-height: 340px; margin: 0; white-space: pre-wrap;
+        word-break: break-word; }
+  .form { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px;
+          margin-bottom: 12px; }
+  .dangerbox { border: 1px solid #7d3a3a; background: #33201f; border-radius: 5px; padding: 9px;
+               margin-bottom: 10px; }
+  .checkline { display: flex; gap: 6px; align-items: center; }
+  .checkline input { width: auto; }
+  #log { border-top: 1px solid var(--line); background: var(--panel); }
+  #logbody { max-height: 32vh; overflow: auto; padding: 0 12px 10px; }
+  .logrow { border-bottom: 1px solid #23262d; padding: 3px 0; }
+  .logrow summary { cursor: pointer; list-style: none; }
+  .logrow .t { color: var(--muted); }
+  .tag { display: inline-block; min-width: 54px; color: var(--muted); }
+  .tag.http { color: var(--accent); }
+  .tag.action { color: var(--ok); }
+  .tag.log { color: var(--muted); }
+  .level-error { color: var(--err); }
+  .level-warning { color: var(--warn); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  <b>&#8252; Use at your own risk.</b>
+  This is an unofficial debugging tool for a reverse-engineered API. Commands sent from
+  here go to <b>real hardware</b> over IntelliClima's cloud and can change device
+  settings or clear counters. There is no undo and no
+  warranty of any kind: the author and contributors accept <b>no responsibility</b> for
+  damage to your devices, lost settings, or anything else that follows from using it.
+  Raw endpoints and hand-written frames are entirely unvalidated - you are poking an
+  undocumented protocol. If that is not acceptable, close this page.
+</div>
+
+<header>
+  <h1>IntelliClima debug UI</h1>
+  <span id="whoami" class="muted"></span>
+  <span class="spacer"></span>
+  <button id="poll" class="primary hidden">Poll devices</button>
+  <button id="logout" class="hidden">Log out</button>
+</header>
+
+<section id="loginview" class="panel" style="margin: 12px; max-width: 460px;">
+  <h2>Log in</h2>
+  <div class="form">
+    <div><label for="username">Username</label><input id="username" autocomplete="off"></div>
+    <div><label for="password">Password</label><input id="password" type="password"></div>
+  </div>
+  <div class="row">
+    <button id="login" class="primary">Log in</button>
+    <span id="loginmsg" class="err"></span>
+  </div>
+  <p class="muted">Credentials stay in this process's memory. Set
+    <code>INTELLICLIMA_USERNAME</code>/<code>INTELLICLIMA_PASSWORD</code> to prefill.</p>
+</section>
+
+<main id="appview" class="hidden">
+  <div class="panel">
+    <h2>Devices</h2>
+    <div id="devices" class="muted">Not polled yet.</div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs">
+      <button data-tab="status" class="on">Status</button>
+      <button data-tab="commands">Commands</button>
+      <button data-tab="frames">Frames</button>
+      <button data-tab="raw">Raw request</button>
+    </div>
+
+    <div id="tab-status">
+      <div id="summary" class="kv"></div>
+      <h2 style="margin-top:14px">Decoded</h2>
+      <pre id="decoded"></pre>
+      <details style="margin-top:10px"><summary class="muted">Raw device fields</summary>
+        <pre id="rawdev"></pre></details>
+    </div>
+
+    <div id="tab-commands" class="hidden">
+      <div class="row" style="margin-bottom:10px">
+        <div class="grow"><label for="action">Action</label><select id="action"></select></div>
+        <div class="grow"><label>Serial (crono_sn)</label><input id="cmdserial" disabled></div>
+      </div>
+      <p id="actionhelp" class="muted"></p>
+      <div id="actiondanger" class="dangerbox hidden">
+        <div class="warn" id="actiondangertext"></div>
+        <label class="checkline" style="margin-top:6px">
+          <input type="checkbox" id="confirm"> I understand, send it anyway</label>
+      </div>
+      <div id="actionform" class="form"></div>
+      <div class="row">
+        <button id="send" class="primary">Send command</button>
+        <span id="cmdmsg" class="muted"></span>
+      </div>
+      <pre id="cmdresult" style="margin-top:10px"></pre>
+    </div>
+
+    <div id="tab-frames" class="hidden">
+      <div class="row" style="margin-bottom:10px">
+        <div class="grow"><label for="builder">Builder</label><select id="builder"></select></div>
+        <div class="grow"><label for="frameserial">Serial</label><input id="frameserial"></div>
+      </div>
+      <div id="frameform" class="form"></div>
+      <div class="row"><button id="build">Build frame</button>
+        <span id="framemsg" class="muted"></span></div>
+      <pre id="framehex" style="margin-top:10px"></pre>
+
+      <h2 style="margin-top:16px">Send a frame</h2>
+      <div class="row" style="margin-bottom:10px">
+        <div class="grow" style="flex:3"><label for="sendframe">Hex frame</label>
+          <input id="sendframe"></div>
+        <div class="grow"><label for="sendfamily">Endpoint</label>
+          <select id="sendfamily"><option value="eco">eco/send/</option>
+            <option value="eco3">eco3/send/</option></select></div>
+      </div>
+      <div class="dangerbox">
+        <div class="warn">Unvalidated: this frame goes straight to the device.</div>
+        <label class="checkline" style="margin-top:6px">
+          <input type="checkbox" id="confirmframe"> I understand, send it anyway</label>
+      </div>
+      <div class="row"><button id="dosendframe" class="danger">Send frame</button>
+        <span id="sendframemsg" class="muted"></span></div>
+      <pre id="sendframeresult" style="margin-top:10px"></pre>
+    </div>
+
+    <div id="tab-raw" class="hidden">
+      <div class="row" style="margin-bottom:10px">
+        <div class="grow" style="flex:2"><label for="rawpath">Path (after /server_v1_mono/api/)</label>
+          <input id="rawpath" placeholder="sync/cronos400"></div>
+      </div>
+      <label for="rawpayload">JSON body (empty for none)</label>
+      <textarea id="rawpayload" spellcheck="false"></textarea>
+      <div class="row" style="margin:10px 0">
+        <label class="checkline"><input type="checkbox" id="rawauth" checked> send auth headers</label>
+        <label class="checkline"><input type="checkbox" id="rawraise"> raise on non-OK status</label>
+        <button id="rawsend" class="primary">POST</button>
+        <span id="rawmsg" class="muted"></span>
+      </div>
+      <pre id="rawresult"></pre>
+    </div>
+  </div>
+</main>
+
+<section id="log">
+  <header style="border:0; background: transparent;">
+    <h2 style="margin:0">Log</h2>
+    <span class="spacer"></span>
+    <label class="checkline muted"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
+    <button id="clearlog">Clear</button>
+  </header>
+  <div id="logbody"></div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { devices: [], selected: null, actions: {}, logSeq: 0, tab: "status" };
+
+async function call(path, options = {}) {
+  const response = await fetch(path, options);
+  const data = await response.json().catch(() => ({ error: response.statusText }));
+  if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+const postJSON = (path, body) => call(path, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+});
+
+function show(el, visible) { el.classList.toggle("hidden", !visible); }
+const device = () => state.devices.find((d) => d.id === state.selected) || null;
+
+// ---- login / session ----
+
+function applyState(data) {
+  const inn = data.logged_in;
+  show($("loginview"), !inn);
+  show($("appview"), inn);
+  show($("poll"), inn);
+  show($("logout"), inn);
+  $("whoami").textContent = inn
+    ? `user ${data.user_id} - houses ${data.house_ids.join(", ") || "none"} - ` +
+      `${data.eco_ids.length} ECO / ${data.eco3_ids.length} ECO3`
+    : "";
+  if (!inn) {
+    if (!$("username").value) $("username").value = data.prefill_username || "";
+    if (!$("password").value) $("password").value = data.prefill_password || "";
+    state.devices = [];
+    state.selected = null;
+    $("devices").textContent = "Not polled yet.";
+  }
+}
+
+$("login").onclick = async () => {
+  $("loginmsg").textContent = "";
+  $("login").disabled = true;
+  try {
+    applyState(await postJSON("/api/login",
+      { username: $("username").value, password: $("password").value }));
+    await poll();
+  } catch (err) {
+    $("loginmsg").textContent = err.message;
+  } finally {
+    $("login").disabled = false;
+  }
+};
+$("password").addEventListener("keydown", (e) => { if (e.key === "Enter") $("login").click(); });
+$("logout").onclick = async () => applyState(await postJSON("/api/logout", {}));
+
+// ---- devices ----
+
+async function poll() {
+  $("poll").disabled = true;
+  $("poll").textContent = "Polling...";
+  try {
+    const data = await postJSON("/api/poll", {});
+    state.devices = data.devices;
+    if (!device() && state.devices.length) state.selected = state.devices[0].id;
+    renderDevices();
+    renderSelected();
+  } catch (err) {
+    $("devices").innerHTML = `<span class="err"></span>`;
+    $("devices").firstChild.textContent = err.message;
+  } finally {
+    $("poll").disabled = false;
+    $("poll").textContent = "Poll devices";
+  }
+}
+$("poll").onclick = poll;
+
+function renderDevices() {
+  const host = $("devices");
+  host.textContent = "";
+  if (!state.devices.length) { host.textContent = "No supported devices found."; return; }
+  for (const dev of state.devices) {
+    const el = document.createElement("div");
+    el.className = "device" + (dev.id === state.selected ? " sel" : "");
+    el.innerHTML =
+      `<div class="nm"></div><div class="muted"><span class="fam"></span> - ` +
+      `id <span class="id"></span> - sn <span class="sn"></span></div>` +
+      `<div class="st"></div>`;
+    el.querySelector(".nm").textContent = dev.name;
+    el.querySelector(".fam").textContent = dev.model;
+    el.querySelector(".id").textContent = dev.id;
+    el.querySelector(".sn").textContent = dev.serial;
+    const st = el.querySelector(".st");
+    st.className = "st " + (dev.online ? "ok" : "err");
+    st.textContent = (dev.online ? "online" : "offline") + " - " + dev.role;
+    el.onclick = () => { state.selected = dev.id; renderDevices(); renderSelected(); };
+    host.appendChild(el);
+  }
+}
+
+function renderSelected() {
+  const dev = device();
+  if (!dev) return;
+  $("summary").textContent = "";
+  for (const [key, value] of Object.entries(dev.summary)) {
+    const row = document.createElement("div");
+    const k = document.createElement("span");
+    const v = document.createElement("span");
+    k.textContent = key;
+    v.textContent = value === null || value === "" ? "-" : value;
+    row.append(k, v);
+    $("summary").appendChild(row);
+  }
+  $("decoded").textContent = JSON.stringify(dev.decoded, null, 2);
+  $("rawdev").textContent = JSON.stringify(dev.raw, null, 2);
+  $("cmdserial").value = dev.serial;
+  if (!$("frameserial").value) $("frameserial").value = dev.serial;
+  renderActionSelect();
+}
+
+// ---- generated forms ----
+
+function renderForm(host, params, prefill = {}) {
+  host.textContent = "";
+  for (const param of params) {
+    const cell = document.createElement("div");
+    const label = document.createElement("label");
+    label.textContent = param.name + (param.optional ? " (optional)" : "");
+    cell.appendChild(label);
+    let input;
+    if (param.kind === "enum") {
+      input = document.createElement("select");
+      if (param.optional) input.add(new Option("(preserve)", ""));
+      for (const choice of param.choices) input.add(new Option(choice, choice));
+      input.value = prefill[param.name] ?? param.default ?? "";
+    } else if (param.kind === "bool") {
+      input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = String(prefill[param.name] ?? param.default) === "true"
+        || String(prefill[param.name] ?? param.default) === "1";
+    } else {
+      input = document.createElement("input");
+      input.type = param.kind === "text" ? "text" : "number";
+      if (param.kind === "float") input.step = "0.1";
+      input.value = prefill[param.name] ?? param.default ?? "";
+    }
+    input.dataset.param = param.name;
+    input.dataset.kind = param.kind;
+    cell.appendChild(input);
+    host.appendChild(cell);
+  }
+}
+
+function readForm(host) {
+  const values = {};
+  for (const input of host.querySelectorAll("[data-param]")) {
+    values[input.dataset.param] = input.dataset.kind === "bool"
+      ? (input.checked ? "1" : "0") : input.value;
+  }
+  return values;
+}
+
+// Prefill from the decoded values, never from the raw registers: resending a raw
+// threshold would turn its advanced flag into part of the level.
+function prefillFor(action, dev) {
+  const decoded = dev.decoded || {};
+  const values = {};
+  if (action.name === "set_mode_speed") {
+    values.mode = dev.summary.mode_set;
+    values.speed = dev.summary.speed_set;
+  } else if (action.name === "set_season") {
+    values.season = dev.summary.season;
+  } else if (action.name === "set_advanced_settings") {
+    const gas = dev.family === "eco3" ? "co2_threshold" : "voc_threshold";
+    const rh = decoded.humidity_threshold, gasValue = decoded[gas];
+    if (rh && rh.level) { values.humidity_threshold = rh.level;
+      values.humidity_threshold_advanced = rh.advanced ? "1" : "0"; }
+    if (gasValue && gasValue.level) { values[gas] = gasValue.level;
+      values[gas + "_advanced"] = gasValue.advanced ? "1" : "0"; }
+    if (typeof decoded.luminosity_threshold === "string")
+      values.lux_threshold = decoded.luminosity_threshold;
+  } else if (action.name === "set_temperature_and_humidity_offsets") {
+    values.temperature_offset = (Number(dev.raw.offset_temp) / 100) || 0;
+    values.humidity_offset = Math.round(Number(dev.raw.offset_hum) / 100) || 0;
+  }
+  return values;
+}
+
+function currentActions() {
+  const dev = device();
+  return dev ? (state.actions[dev.family] || []) : [];
+}
+
+function renderActionSelect() {
+  const select = $("action");
+  const previous = select.value;
+  select.textContent = "";
+  for (const action of currentActions()) select.add(new Option(action.label, action.name));
+  select.value = currentActions().some((a) => a.name === previous) ? previous : select.options[0]?.value;
+  renderAction();
+}
+
+function renderAction() {
+  const dev = device();
+  const action = currentActions().find((a) => a.name === $("action").value);
+  if (!dev || !action) return;
+  $("actionhelp").textContent = action.help || "";
+  show($("actiondanger"), Boolean(action.danger));
+  $("actiondangertext").textContent = action.danger ? "‼ " + action.danger : "";
+  $("confirm").checked = false;
+  renderForm($("actionform"), action.params, prefillFor(action, dev));
+  $("cmdresult").textContent = "";
+  $("cmdmsg").textContent = "";
+}
+$("action").onchange = renderAction;
+
+$("send").onclick = async () => {
+  const dev = device();
+  const action = currentActions().find((a) => a.name === $("action").value);
+  if (!dev || !action) return;
+  if (action.danger && !$("confirm").checked) {
+    $("cmdmsg").innerHTML = "";
+    $("cmdmsg").className = "err";
+    $("cmdmsg").textContent = "Confirm the warning first.";
+    return;
+  }
+  $("send").disabled = true;
+  $("cmdmsg").className = "muted";
+  $("cmdmsg").textContent = "sending (commands sleep 5s server-side)...";
+  try {
+    const data = await postJSON("/api/command",
+      { device_id: dev.id, action: action.name, params: readForm($("actionform")) });
+    $("cmdmsg").className = "ok";
+    $("cmdmsg").textContent = "ok - repolling";
+    await poll();
+    // After poll(): re-rendering the action form clears the result panel.
+    $("cmdresult").textContent = JSON.stringify(data.result, null, 2);
+    $("cmdmsg").textContent = "ok";
+  } catch (err) {
+    $("cmdmsg").className = "err";
+    $("cmdmsg").textContent = err.message;
+  } finally {
+    $("send").disabled = false;
+  }
+};
+
+// ---- frames ----
+
+function currentBuilder() {
+  return (state.actions.frames || []).find((b) => b.name === $("builder").value);
+}
+
+function renderBuilder() {
+  const builder = currentBuilder();
+  if (builder) renderForm($("frameform"), builder.params);
+}
+
+$("builder").onchange = renderBuilder;
+
+$("build").onclick = async () => {
+  const builder = currentBuilder();
+  if (!builder) return;
+  $("framemsg").className = "muted";
+  $("framemsg").textContent = "";
+  try {
+    const data = await postJSON("/api/frame", {
+      builder: builder.name, serial: $("frameserial").value, params: readForm($("frameform")),
+    });
+    $("framehex").textContent = data.frame;
+    $("sendframe").value = data.frame;
+  } catch (err) {
+    $("framemsg").className = "err";
+    $("framemsg").textContent = err.message;
+  }
+};
+
+$("dosendframe").onclick = async () => {
+  if (!$("confirmframe").checked) {
+    $("sendframemsg").className = "err";
+    $("sendframemsg").textContent = "Confirm the warning first.";
+    return;
+  }
+  $("dosendframe").disabled = true;
+  $("sendframemsg").className = "muted";
+  $("sendframemsg").textContent = "sending...";
+  try {
+    const data = await postJSON("/api/send_frame",
+      { frame: $("sendframe").value, family: $("sendfamily").value });
+    $("sendframeresult").textContent = JSON.stringify(data.result, null, 2);
+    $("sendframemsg").className = "ok";
+    $("sendframemsg").textContent = "sent";
+  } catch (err) {
+    $("sendframemsg").className = "err";
+    $("sendframemsg").textContent = err.message;
+  } finally {
+    $("dosendframe").disabled = false;
+  }
+};
+
+// ---- raw ----
+
+$("rawsend").onclick = async () => {
+  $("rawmsg").className = "muted";
+  $("rawmsg").textContent = "sending...";
+  try {
+    const data = await postJSON("/api/raw", {
+      path: $("rawpath").value, payload: $("rawpayload").value,
+      authenticated: $("rawauth").checked, raise_on_status: $("rawraise").checked,
+    });
+    $("rawresult").textContent = JSON.stringify(data.result, null, 2);
+    $("rawmsg").className = "ok";
+    $("rawmsg").textContent = "ok";
+  } catch (err) {
+    $("rawmsg").className = "err";
+    $("rawmsg").textContent = err.message;
+  }
+};
+
+// ---- tabs ----
+
+for (const button of document.querySelectorAll(".tabs button")) {
+  button.onclick = () => {
+    state.tab = button.dataset.tab;
+    for (const other of document.querySelectorAll(".tabs button"))
+      other.classList.toggle("on", other === button);
+    for (const name of ["status", "commands", "frames", "raw"])
+      show($("tab-" + name), name === state.tab);
+  };
+}
+
+// ---- log ----
+
+function appendLog(entry) {
+  const row = document.createElement(entry.detail ? "details" : "div");
+  row.className = "logrow";
+  const head = document.createElement(entry.detail ? "summary" : "div");
+  const time = document.createElement("span");
+  time.className = "t";
+  time.textContent = entry.time + " ";
+  const tag = document.createElement("span");
+  tag.className = "tag " + entry.kind;
+  tag.textContent = entry.kind;
+  const title = document.createElement("span");
+  title.className = "level-" + entry.level;
+  title.textContent = " " + entry.title;
+  head.append(time, tag, title);
+  row.appendChild(head);
+  if (entry.detail) {
+    const pre = document.createElement("pre");
+    pre.textContent = entry.detail;
+    row.appendChild(pre);
+  }
+  $("logbody").appendChild(row);
+  if ($("autoscroll").checked) $("logbody").scrollTop = $("logbody").scrollHeight;
+}
+
+$("clearlog").onclick = async () => {
+  await postJSON("/api/log/clear", {});
+  $("logbody").textContent = "";
+};
+
+async function pollLog() {
+  try {
+    const data = await call(`/api/log?since=${state.logSeq}`);
+    for (const entry of data.entries) { state.logSeq = entry.seq; appendLog(entry); }
+  } catch (err) { /* the page keeps polling; a transient failure is not worth reporting */ }
+}
+
+// ---- boot ----
+
+(async () => {
+  state.actions = await call("/api/actions");
+  for (const builder of state.actions.frames) $("builder").add(new Option(builder.label, builder.name));
+  renderBuilder();
+  applyState(await call("/api/state"));
+  if (!$("loginview").classList.contains("hidden")) $("username").focus();
+  else await poll();
+  setInterval(pollLog, 1200);
+  pollLog();
+})();
+</script>
+</body>
+</html>

@@ -12,8 +12,8 @@ from pyintelliclima.const import (
     FanSpeed,
     FreeCoolingLevel,
     Season,
+    SatelliteRotation,
     ThresholdLevel,
-    SlaveRotation,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -61,7 +61,7 @@ async def test_set_mode_speed_auto(mock_set_mode_speed):
 
     assert await api.set_mode_speed_auto("AABBCCDD") is True
     mock_set_mode_speed.assert_awaited_once_with(
-        "AABBCCDD", mode=FanMode.sensor, speed=FanSpeed.auto_set
+        "AABBCCDD", mode=FanMode.sensor, speed=FanSpeed.auto
     )
 
 
@@ -132,11 +132,9 @@ async def test_set_slave_rotation_calls_set_advanced_settings(mock_set_advanced)
     api = IntelliClimaEcocomfort3API(MagicMock(), token_headers={})
     mock_set_advanced.return_value = True
 
-    assert await api.set_slave_rotation("AABBCCDD", SlaveRotation.discordant)
+    assert await api.set_satellite_rotation("AABBCCDD", SatelliteRotation.discordant)
 
-    mock_set_advanced.assert_awaited_once_with(
-        "AABBCCDD", slave_rotation=SlaveRotation.discordant
-    )
+    mock_set_advanced.assert_awaited_once_with("AABBCCDD", satellite_rotation=SatelliteRotation.discordant)
 
 
 @patch("pyintelliclima.api.REFRESH_DELAY", 0)
@@ -157,6 +155,31 @@ async def test_set_season_updates_device_and_server_state(mock_post):
         "serial": "AABBCCDD",
         "data": '{"ws": 0}',
     }
+    # Winter clears free cooling on the device as well as in the cloud record.
+    assert mock_post.await_args_list[2].args == (session, "eco3/send/")
+    assert mock_post.await_args_list[2].kwargs["json_payload"] == {
+        "trama": "0AAABBCCDD00182F002000007F7F7F7F707F000000000000D80D"
+    }
+    assert mock_post.await_args_list[3].args == (session, "eco3/freecoolset/")
+    assert mock_post.await_args_list[3].kwargs["json_payload"] == {
+        "serial": "AABBCCDD",
+        "value": 0,
+    }
+
+
+@patch("pyintelliclima.api.REFRESH_DELAY", 0)
+@patch("pyintelliclima.api.post_to_session", new_callable=AsyncMock)
+async def test_set_season_summer_leaves_free_cooling_alone(mock_post):
+    session = MagicMock()
+    api = IntelliClimaEcocomfort3API(session, token_headers={"TOKEN": "tok"})
+    mock_post.return_value = {"status": "OK"}
+
+    assert await api.set_season("AABBCCDD", Season.summer)
+
+    assert [call.args[1] for call in mock_post.await_args_list] == [
+        "eco3/send/",
+        "eco3/setdata/",
+    ]
 
 
 @patch("pyintelliclima.api.REFRESH_DELAY", 0)

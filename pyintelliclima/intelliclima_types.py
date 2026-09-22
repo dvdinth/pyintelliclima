@@ -4,9 +4,27 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
-from pyintelliclima.const import FanMode, FanSpeed
+from pyintelliclima.const import (
+    MODE_DIRECTION_MASK,
+    SPEED_FLAG_ADVANCED,
+    SPEED_FLAG_BOOST,
+    SPEED_FLAG_NIGHT,
+    SPEED_FLAG_PROFILED,
+    SPEED_VALUE_MASK,
+    THRESHOLD_FLAG_ADVANCED,
+    THRESHOLD_VALUE_MASK,
+    FanMode,
+    FanPreset,
+    FanSpeed,
+    FanSpeedState,
+    ThresholdLevel,
+)
 
 # ruff: noqa: N815
+
+# Dataclass fields mirror the server's JSON keys verbatim - dacite matches by field name -
+# including its camelCase and its master/slave wording. Our own API surface uses
+# main/satellite instead.
 
 
 @dataclass
@@ -78,17 +96,18 @@ class IntelliClimaGetHousesResponse:
 
 @dataclass
 class IntelliClimaGetDeviceBody:
-    """Request format for the device status polling request."""
+    """Request format for the device status polling request.
+
+    The vendor app also sends `C900s`/`RHINOs` and their `includi_*` flags. They are
+    omitted here because this library implements neither family, and asking for a family
+    whose ID list would always be empty only invites devices we cannot parse.
+    """
 
     IDs: str
     ECOs: str
-    C900s: str
-    RHINOs: str
     ECO3s: str
     includi_eco: bool
     includi_ledot: bool
-    includi_c900: bool
-    includi_rhino: bool
     includi_eco3: bool
 
 
@@ -124,6 +143,117 @@ class IntelliClimaECOCustomProgram:
         return json.dumps(asdict(self))
 
 
+@dataclass(frozen=True)
+class FanState:
+    """Decoded running state, as opposed to the `*_set` setpoints."""
+
+    direction: FanMode
+    speed: FanSpeedState
+    preset: FanPreset
+    profiled: bool
+    advanced: bool
+    boost: bool
+    night: bool
+
+
+def decode_fan_state(mode_state: str, speed_state: str) -> FanState:
+    """Decode a device's reported `mode_state`/`speed_state` registers.
+
+    Prefer this over the `mode_set`/`speed_set` fields: those hold the last value
+    *commanded*, which is not what the unit is doing. The vendor app displays this
+    pair and never those.
+
+    `speed_state` packs the running speed in its low three bits and four flags in
+    its high nibble; `mode_state` carries the airflow direction in its low nibble.
+    The flag arithmetic mirrors the vendor app, including the order of the
+    overrides: boost wins over the advanced bump, and night wins over both.
+
+    Raises `ValueError` if either register is not an integer, or if the direction
+    nibble is not a known `FanMode`.
+    """
+    mode_raw = int(mode_state)
+    speed_raw = int(speed_state)
+
+    night = bool(speed_raw & SPEED_FLAG_NIGHT)
+    boost = bool(speed_raw & SPEED_FLAG_BOOST)
+    advanced = bool(speed_raw & SPEED_FLAG_ADVANCED)
+    profiled = bool(speed_raw & SPEED_FLAG_PROFILED)
+
+    speed = speed_raw & SPEED_VALUE_MASK
+    if advanced and 1 < speed < 5:
+        speed += 1
+    if boost:
+        speed = 5
+    if night:
+        speed = 1
+
+    direction = FanMode(str(mode_raw & MODE_DIRECTION_MASK))
+
+    # Deliberately not a port of the app's own fan_mode: that returns -1 for 50 of
+    # the 256 speed_state values, and conflates auto with program into one value
+    # that its template then has to disambiguate by testing direction anyway.
+    if direction is FanMode.sensor:
+        preset = FanPreset.auto
+    elif profiled:
+        preset = FanPreset.program
+    elif night or speed == FanSpeedState.sleep:
+        preset = FanPreset.sleep
+    elif direction is FanMode.off or speed == FanSpeedState.off:
+        preset = FanPreset.off
+    else:
+        preset = FanPreset.manual
+
+    return FanState(
+        direction=direction,
+        speed=FanSpeedState(speed),
+        preset=preset,
+        profiled=profiled,
+        advanced=advanced,
+        boost=boost,
+        night=night,
+    )
+
+
+@dataclass(frozen=True)
+class ThresholdSetting:
+    """A sensor-mode threshold register, split into its level and its advanced flag."""
+
+    level: ThresholdLevel
+    advanced: bool
+
+
+def decode_threshold(raw: str) -> ThresholdSetting:
+    """Split a reported `rh_thrs`/`voc_thrs`/`co2_thrs` register into level and flag.
+
+    The raw register is not a `ThresholdLevel` whenever the flag is on, so decode it
+    before comparing it or resending it - see `set_advanced_settings` for why a partial
+    write has to resend the others. Raises `ValueError` on an undefined level.
+    """
+    value = int(raw)
+    level = ThresholdLevel(str(value & THRESHOLD_VALUE_MASK))
+    # A level of zero never gets the flag written to it, so a bare 0x80 is plain "off".
+    # The vendor app decodes with `> 128` rather than `>= 128` for the same reason.
+    advanced = bool(value & THRESHOLD_FLAG_ADVANCED) and level is not ThresholdLevel.off
+    return ThresholdSetting(level=level, advanced=advanced)
+
+
+def _decode_threshold(raw: str | None) -> ThresholdSetting | None:
+    if raw is None or not raw.strip():
+        return None
+    return decode_threshold(raw)
+
+
+def decode_offset(raw: str) -> float:
+    """Convert a reported `offset_temp`/`offset_hum` register into its human unit.
+
+    Both registers hold hundredths of a degree or a percent - `-230` is -2.3 degrees -
+    which is the unit `set_temperature_and_humidity_offsets` takes, not the unit the
+    register reports. The server reports the value already signed, so this is a plain
+    scale rather than a two's complement decode. Raises `ValueError` on a non-integer.
+    """
+    return int(raw) / 100
+
+
 @dataclass
 class IntelliClimaVMCBase:
     """Status fields common to the ECOCOMFORT VMC family."""
@@ -147,7 +277,7 @@ class IntelliClimaVMCBase:
     macwifi: str
     conn_num: str
     conn_state: str
-    role: str  # master/slave mode ("1" = master, "2" = slave)
+    role: str  # "1" = main unit, "2" = satellite unit
     rh_thrs: str
     lux_thrs: str
     voc_thrs: str | None
@@ -189,6 +319,9 @@ class IntelliClimaVMCBase:
     rssi: str | None
     aqi: str | None
     co2_thrs: str | None
+    # ECOCOMFORT 3's own "filters need changing" flag ("1" = change due). It is the only
+    # filter signal that generation has: the vendor app reads this and never asks
+    # `eco3/filters/` to calculate wear the way it does for ECOCOMFORT 2.0.
     dev_state: str | None
     online_status: bool
     online_status_debug: str
@@ -200,15 +333,84 @@ class IntelliClimaVMCBase:
                 " ", ""
             )
 
+    @property
+    def fan_state(self) -> FanState:
+        """What the unit is actually doing, decoded from `mode_state`/`speed_state`.
+
+        Read this rather than `mode_set`/`speed_set`, which hold the last values
+        *commanded* and say nothing about overrides the device applied afterwards.
+
+        The `*_set` fields remain the right source for a write that wants to preserve
+        "the current speed": the running speed may be a boost or night-profile override,
+        and commanding that back would make a temporary override permanent.
+
+        Raises `ValueError` if either register holds a value the protocol does not
+        define. Nothing else on the dataclass depends on it, so a device with an
+        unexpected register still reports its temperature, humidity and air quality.
+        """
+        return decode_fan_state(self.mode_state, self.speed_state)
+
+    @property
+    def humidity_threshold(self) -> ThresholdSetting | None:
+        """`None` if the device reports no value for this sensor."""
+        return _decode_threshold(self.rh_thrs)
+
+    @property
+    def luminosity_threshold(self) -> ThresholdLevel | None:
+        """A bare level: this is the one threshold with no advanced-control option.
+
+        The register is deliberately not masked, so a flag bit turning up here raises
+        rather than being read as a level.
+        """
+        if not self.lux_thrs.strip():
+            return None
+        return ThresholdLevel(str(int(self.lux_thrs)))
+
+    @property
+    def temperature_offset(self) -> float | None:
+        """Calibration offset in degrees, `None` if the device reports no value.
+
+        Read this rather than `offset_temp`, which is the raw register in hundredths:
+        `set_temperature_and_humidity_offsets` takes degrees, so resending the raw
+        field would write a hundredfold offset.
+        """
+        if not self.offset_temp.strip():
+            return None
+        return decode_offset(self.offset_temp)
+
+    @property
+    def humidity_offset(self) -> int | None:
+        """Calibration offset in percent, `None` if the device reports no value.
+
+        Rounded to whole percent, which is the resolution the vendor app both displays
+        and writes, and what `set_temperature_and_humidity_offsets` accepts.
+        """
+        if not self.offset_hum.strip():
+            return None
+        return round(decode_offset(self.offset_hum))
+
+
+# dacite builds both generations off one shared field list, so `voc_thrs` and `co2_thrs`
+# both sit on the base - but each device populates only its own, leaving the other null.
+# The decoded property therefore lives on the generation that has it.
+
 
 @dataclass
-class IntelliClimaECO(IntelliClimaVMCBase):
+class IntelliClimaECO2(IntelliClimaVMCBase):
     """Status data returned by an ECOCOMFORT 2.0 device."""
+
+    @property
+    def voc_threshold(self) -> ThresholdSetting | None:
+        return _decode_threshold(self.voc_thrs)
 
 
 @dataclass
 class IntelliClimaECO3(IntelliClimaVMCBase):
     """Status data returned by an ECOCOMFORT 3 device."""
+
+    @property
+    def co2_threshold(self) -> ThresholdSetting | None:
+        return _decode_threshold(self.co2_thrs)
 
 
 @dataclass
@@ -390,7 +592,7 @@ class IntelliClimaFilterStatus:
 
     serial: str
     is_active: bool
-    from_date: str
+    from_date: str | None
     stats: list[IntelliClimaFilterStatsEntry]
     totale: float
     change_filter: bool
@@ -400,7 +602,7 @@ class IntelliClimaFilterStatus:
 class IntelliClimaDevices:
     """Dataclass for storing intelliclima devices."""
 
-    ecocomfort2_devices: dict[str, IntelliClimaECO]
+    ecocomfort2_devices: dict[str, IntelliClimaECO2]
     c800_devices: dict[str, IntelliClimaC800]
     ecocomfort3_devices: dict[str, IntelliClimaECO3] = field(default_factory=dict)
 
@@ -417,4 +619,4 @@ class IntelliClimaDevices:
         return cls({}, {})
 
 
-AllIntelliClimaDevices = IntelliClimaECO | IntelliClimaECO3 | IntelliClimaC800
+AllIntelliClimaDevices = IntelliClimaECO2 | IntelliClimaECO3 | IntelliClimaC800

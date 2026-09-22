@@ -37,6 +37,18 @@ async def test_post_to_session_non_ok_status(monkeypatch):
         await post_to_session(session, "some/path")
 
 
+async def test_post_to_session_non_ok_status_returned_when_not_raising():
+    session = MagicMock()
+    response = AsyncMock()
+    response.text.return_value = json.dumps({"status": "KO", "error": "NO_PASSWORD"})
+    response.raise_for_status.return_value = None
+    session.post.return_value.__aenter__.return_value = response
+
+    result = await post_to_session(session, "some/path", raise_on_status=False)
+
+    assert result == {"status": "KO", "error": "NO_PASSWORD"}
+
+
 async def test_post_to_session_http_error():
     session = MagicMock()
 

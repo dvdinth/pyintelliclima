@@ -709,6 +709,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "dacite" },
+    { name = "typing-extensions" },
 ]
 
 [package.dev-dependencies]
@@ -728,6 +729,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "dacite", specifier = ">=1.9.2" },
+    { name = "typing-extensions", specifier = ">=4.16.0" },
 ]
 
 [package.metadata.requires-dev]

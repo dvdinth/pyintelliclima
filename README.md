@@ -9,27 +9,101 @@
 
 </div>
 
-* * *
+---
 
 This is a Python module for communicating with IntelliClima ECOCOMFORT 2.0 and
 ECOCOMFORT 3 devices.
 Its main use is for my corresponding [HomeAssistant IntelliClima integration](https://www.home-assistant.io/integrations/intelliclima/).
 
-It can be extended to include other devices from IntelliClima in the future, but I only own the 
-ECOCOMFORT 2.0, so I cannot add any others without help from device owners. I've made a
+ECOCOMFORT 3 support is community-contributed and is not tested by me - I own only the
+ECOCOMFORT 2.0. It can be extended to include other devices from IntelliClima in the future,
+but not without help from device owners. I've made a
 [guide for adding new devices](ADD_DEVICE_GUIDE.md). If you own another device type, it's
 highly appreciated if you could take a look at the guide and see if you can add a PR for your
 device(s), or share the logs as described so I can add them.
 
 This API was made by reverse engineering the cloud API, through the use of an android emulator and proxy to catch the Intelliclima+ app traffic. As such, no public API exists and the functionality of this module breaks if the API changes. This module is provided as-is, with no guarantees of correctness, stability, or continued functionality. Use it at your own risk.
 
-### ECOCOMFORT 3 air-quality values
+### Sensor values
 
-ECOCOMFORT 3 status responses populate the existing `voc_state`, `co2`, `aqi`, and `co2_thrs`
-fields. All values are returned as strings. Their exact sensor semantics have not yet been
-verified: field observations found physically implausible `co2` values, while `voc_state` has a
-400-unit floor characteristic of a VOC-derived eCO2 estimate. Consumers should therefore expose
-these fields as unverified raw data rather than dependable VOC or CO2 measurements.
+All values are returned as strings, and every sensor has a "no reading" sentinel that has
+to be filtered out before it reaches a consumer - report those as unavailable rather than
+as a measurement:
+
+| Field              | Sentinel |
+| ------------------ | -------- |
+| `tamb`             | `327.67` |
+| `rh`               | `143`    |
+| `voc_state`, `co2` | `65535`  |
+| `aqi`              | `143`    |
+
+#### Air-quality values
+
+Read air quality from `voc_state` on both generations. It carries a different quantity on each,
+so it needs a different device class:
+
+| Field           | ECOCOMFORT 2.0 | ECOCOMFORT 3            |
+| --------------- | -------------- | ----------------------- |
+| `voc_state`     | VOC, ppm       | eCO2, ppm               |
+| `co2`           | no sensor      | unreliable - do not use |
+| `aqi`           | no sensor      | air-quality index, 1-5  |
+| threshold field | `voc_thrs`     | `co2_thrs`              |
+
+For a Home Assistant sensor, both with `UnitOfRatio.PARTS_PER_MILLION`:
+
+- ECOCOMFORT 2.0 - `SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS`
+- ECOCOMFORT 3 - `SensorDeviceClass.CO2`
+
+The ECOCOMFORT 3 eCO2 figure is VOC-derived rather than an NDIR measurement, so it responds to
+solvents and cooking as well as to occupancy.
+
+### Reading the sensor-mode thresholds
+
+`rh_thrs` and `voc_thrs`/`co2_thrs` are not plain levels: the level sits in the low bits and the
+"advanced control" flag in bit 7, so a threshold with that flag on reads back as `129`-`131`.
+Read the decoded properties instead, each `None` when the device reports no value:
+
+| Property                                     | Register   | Type               |
+| -------------------------------------------- | ---------- | ------------------ |
+| `device.humidity_threshold`                  | `rh_thrs`  | `ThresholdSetting` |
+| `device.voc_threshold` (ECOCOMFORT 2.0 only) | `voc_thrs` | `ThresholdSetting` |
+| `device.co2_threshold` (ECOCOMFORT 3 only)   | `co2_thrs` | `ThresholdSetting` |
+| `device.luminosity_threshold`                | `lux_thrs` | `ThresholdLevel`   |
+
+A `ThresholdSetting` is a `level` plus an `advanced` flag. Luminosity is a bare level - it is the
+one threshold with no advanced-control option on either generation.
+
+The flag matters most on a write. The thresholds and the satellite rotation share one device
+register, so changing one means resending the others - and resending a raw register as a level is
+out of range, while resending the level alone clears a flag the user set in the app. Note this is
+not `FanState.advanced`, which is a different bit reporting that an armed threshold is engaging
+right now.
+
+Note that threshold writes were not observed to persist reliably - see
+`IntelliClimaEcocomfort2API.set_advanced_settings`.
+
+### Reading the calibration offsets
+
+`offset_temp` and `offset_hum` are in hundredths - `-230` is `-2.3` degrees - while
+`set_temperature_and_humidity_offsets()` takes degrees and percent. Read
+`device.temperature_offset` and `device.humidity_offset`, each `None` when the device
+reports no value, so the two ends agree on units.
+
+This matters because both offsets share one device register and must be written
+together: changing one means resending the other, and resending the raw field writes a
+hundredfold offset.
+
+### Reading the current mode and speed
+
+`mode_set` and `speed_set` hold the last _commanded_ values, which is not necessarily what the
+unit is doing - the vendor app never displays them. Read `device.fan_state` instead, which
+decodes the reported `mode_state`/`speed_state` registers into the running direction, speed,
+preset, and the boost/night/profiled/advanced flags.
+
+One exception: when a write needs to preserve "the current speed", keep reading `speed_set`.
+The running speed may be a boost or night-profile override, and commanding that back would
+make a temporary override permanent. `FanSpeedState.boost` has no `FanSpeed` counterpart at
+all - boost is device-driven and lasts three minutes.
 
 ## Credits
 
@@ -37,7 +111,10 @@ This was highly inspired by: https://github.com/ruizmarc/homebridge-intelliclima
 
 Partial credit for the reverse engineering process of the API goes to them.
 
-* * *
+ECOCOMFORT 3 support, and the observation that the IntelliClima+ app ships as plain JavaScript
+and can therefore be read directly, are thanks to [@rbressers](https://github.com/rbressers).
+
+---
 
 ## Project Docs
 
@@ -45,7 +122,7 @@ For how to install uv and Python, see [installation.md](installation.md).
 
 For development workflows, see [development.md](development.md).
 
-* * *
+---
 
-*This project was built from
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+_This project was built from
+[simple-modern-uv](https://github.com/jlevy/simple-modern-uv)._

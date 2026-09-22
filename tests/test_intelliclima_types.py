@@ -2,7 +2,7 @@ import json
 
 from pyintelliclima.intelliclima_types import (
     IntelliClimaDevices,
-    IntelliClimaECO,
+    IntelliClimaECO2,
     IntelliClimaECOCustomProgram,
     IntelliClimaECODefaultProgram,
     IntelliClimaModelType,
@@ -38,7 +38,7 @@ def test_ecocomfort_post_init_pcustom_list_to_str():
     p1 = IntelliClimaECOCustomProgram(name="A", graph=(1, 2))
     p2 = IntelliClimaECOCustomProgram(name="B", graph=(3, 4))
 
-    eco = IntelliClimaECO(
+    eco = IntelliClimaECO2(
         id="10",
         crono_sn="SN",
         status="1",

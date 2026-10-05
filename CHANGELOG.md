@@ -8,6 +8,8 @@ not hardcoded in this repo.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-05
+
 ECOCOMFORT 3 support is contributed by [@rbressers](https://github.com/rbressers), who also
 pointed out that the IntelliClima+ app ships as plain JavaScript - which is what made the
 protocol corrections below possible. ECOCOMFORT 3 is untested by the maintainer, who owns only
@@ -163,5 +165,6 @@ an ECOCOMFORT 2.0.
   `codespell`, `pytest-asyncio`, `pytest-cov`) to the versions currently tested against.
 - Added the `Python :: 3.14` classifier.
 
+[0.5.0]: https://github.com/dvdinth/pyintelliclima/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/dvdinth/pyintelliclima/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dvdinth/pyintelliclima/compare/v0.3.1...v0.4.0

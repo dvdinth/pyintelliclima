@@ -192,10 +192,10 @@ def decode_fan_state(mode_state: str, speed_state: str) -> FanState:
     # Deliberately not a port of the app's own fan_mode: that returns -1 for 50 of
     # the 256 speed_state values, and conflates auto with program into one value
     # that its template then has to disambiguate by testing direction anyway.
-    if direction is FanMode.sensor:
-        preset = FanPreset.auto
-    elif profiled:
-        preset = FanPreset.program
+    # Auto therefore needs the profiled flag too: a speed picked by hand while in
+    # sensor direction clears it, and is manual even though the sensors still steer.
+    if profiled:
+        preset = FanPreset.auto if direction is FanMode.sensor else FanPreset.program
     elif night or speed == FanSpeedState.sleep:
         preset = FanPreset.sleep
     elif direction is FanMode.off or speed == FanSpeedState.off:

@@ -110,6 +110,13 @@ def test_preset_prefers_auto_over_program():
     assert decode_fan_state("1", str(0x10 | 0x03)).preset is FanPreset.program
 
 
+def test_preset_sensor_direction_without_profiled_is_manual():
+    # Picking a speed while in sensor direction keeps the direction but clears the
+    # profiled flag, so the sensors no longer choose the speed.
+    assert decode_fan_state("4", "3").preset is FanPreset.manual
+    assert decode_fan_state("4", "1").preset is FanPreset.sleep
+
+
 def test_preset_off():
     assert decode_fan_state("0", "0").preset is FanPreset.off
     assert decode_fan_state("1", "0").preset is FanPreset.off
